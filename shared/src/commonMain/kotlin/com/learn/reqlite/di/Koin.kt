@@ -1,4 +1,4 @@
-package com.jetbrains.kmpapp.di
+package com.learn.reqlite.di
 
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation

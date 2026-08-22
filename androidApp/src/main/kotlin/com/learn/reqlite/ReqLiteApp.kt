@@ -1,7 +1,7 @@
-package com.jetbrains.kmpapp
+package com.learn.reqlite
 
 import android.app.Application
-import com.jetbrains.kmpapp.di.initKoin
+import com.learn.reqlite.di.initKoin
 
 class ReqLiteApp : Application() {
     override fun onCreate() {

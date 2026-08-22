@@ -1,4 +1,4 @@
-package com.jetbrains.kmpapp
+package com.learn.reqlite
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme

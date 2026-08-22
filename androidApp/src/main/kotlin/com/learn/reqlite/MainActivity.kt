@@ -1,4 +1,4 @@
-package com.jetbrains.kmpapp
+package com.learn.reqlite
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
