@@ -10,7 +10,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "com.jetbrains.kmpapp.shared"
+        namespace = "com.learn.reqlite"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
