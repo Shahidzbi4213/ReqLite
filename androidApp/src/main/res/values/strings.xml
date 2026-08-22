@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ReqLite</string>
+    <string name="back">Back</string>
+    <string name="no_data_available">No data available</string>
+</resources>
