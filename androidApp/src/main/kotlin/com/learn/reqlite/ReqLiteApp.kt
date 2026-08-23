@@ -6,6 +6,7 @@ import com.learn.reqlite.di.initKoin
 class ReqLiteApp : Application() {
     override fun onCreate() {
         super.onCreate()
+
         initKoin()
     }
 }
