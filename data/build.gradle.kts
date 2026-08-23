@@ -46,8 +46,10 @@ kotlin {
             
             implementation(libs.androidx.room3.runtime)
             implementation(libs.androidx.sqlite.bundled)
-            
             api(libs.kotlinx.serialization.core)
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
         }
     }
 }
