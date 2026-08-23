@@ -6,9 +6,8 @@ import androidx.room3.RoomDatabase
 
 fun getDatabaseBuilder(ctx: Context): RoomDatabase.Builder<ReqLiteDatabase> {
     val appContext = ctx.applicationContext
-    val dbFile = appContext.getDatabasePath("reqlite.db")
     return Room.databaseBuilder<ReqLiteDatabase>(
         context = appContext,
-        name = dbFile.absolutePath
+        name = "ReqLiteDatabase"
     )
 }
