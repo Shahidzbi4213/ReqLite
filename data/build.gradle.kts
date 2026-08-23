@@ -10,16 +10,12 @@ plugins {
 
 kotlin {
     android {
-        namespace = "com.learning.reqlite"
+        namespace = "com.learning.reqlite.data"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
         compilerOptions {
             jvmTarget = JvmTarget.JVM_21
-        }
-
-        androidResources {
-            enable = true
         }
     }
 
@@ -28,21 +24,30 @@ kotlin {
         iosSimulatorArm64()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
-            baseName = "Shared"
+            baseName = "Data"
             isStatic = true
         }
     }
 
     sourceSets {
         androidMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
         }
         iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
         commonMain.dependencies {
-            api(project(":domain"))
-            api(project(":data"))
-            api(project(":di"))
-            api(project(":utils"))
+            implementation(project(":domain"))
+            implementation(project(":utils"))
+            
+            api(libs.ktor.client.core)
+            api(libs.ktor.client.content.negotiation)
+            api(libs.ktor.serialization.kotlinx.json)
+            
+            implementation(libs.androidx.room3.runtime)
+            implementation(libs.androidx.sqlite.bundled)
+            
+            api(libs.kotlinx.serialization.core)
         }
     }
 }
