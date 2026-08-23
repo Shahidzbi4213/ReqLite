@@ -44,7 +44,7 @@ kotlin {
             api(libs.ktor.client.content.negotiation)
             api(libs.ktor.serialization.kotlinx.json)
             
-            implementation(libs.androidx.room3.runtime)
+            api(libs.androidx.room3.runtime)
             implementation(libs.androidx.sqlite.bundled)
             api(libs.kotlinx.serialization.core)
         }

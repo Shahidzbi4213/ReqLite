@@ -11,6 +11,8 @@ import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
+expect val platformModule: Module
+
 val dataModule = module {
     single {
         val json = Json { 
@@ -28,6 +30,12 @@ val dataModule = module {
             }
         }
     }
+    
+    single { get<com.learn.reqlite.data.local.database.ReqLiteDatabase>().requestDao() }
+    single { get<com.learn.reqlite.data.local.database.ReqLiteDatabase>().environmentDao() }
+    single { get<com.learn.reqlite.data.local.database.ReqLiteDatabase>().historyDao() }
+    single { get<com.learn.reqlite.data.local.database.ReqLiteDatabase>().collectionDao() }
+    single { get<com.learn.reqlite.data.local.database.ReqLiteDatabase>().folderDao() }
 }
 
 val domainModule = module {
@@ -40,6 +48,7 @@ fun initKoin(extraModules: List<Module>) {
         modules(
             dataModule,
             domainModule,
+            platformModule,
             *extraModules.toTypedArray(),
         )
     }
