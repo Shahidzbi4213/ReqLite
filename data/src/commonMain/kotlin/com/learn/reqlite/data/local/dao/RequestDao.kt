@@ -37,6 +37,15 @@ interface RequestDao {
     @Query("SELECT * FROM drafts WHERE requestId = :requestId")
     suspend fun getDraftForRequest(requestId: String): DraftEntity?
 
+    @Query("SELECT * FROM drafts WHERE id = :id")
+    suspend fun getDraftById(id: String): DraftEntity?
+
+    @Query("SELECT * FROM request_fields WHERE draftId = :draftId")
+    suspend fun getFieldsForDraft(draftId: String): List<RequestFieldEntity>
+
+    @Query("SELECT * FROM request_bodies WHERE draftId = :draftId")
+    suspend fun getBodyForDraft(draftId: String): RequestBodyEntity?
+
     @Query("SELECT * FROM requests")
     fun getAllRequests(): Flow<List<RequestEntity>>
 

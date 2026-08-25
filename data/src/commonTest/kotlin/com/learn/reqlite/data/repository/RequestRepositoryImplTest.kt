@@ -11,6 +11,7 @@ import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -57,13 +58,20 @@ class FakeRequestDao : RequestDao {
         return bodies[requestId]
     }
 
-    override suspend fun getDraftForRequest(requestId: String): DraftEntity? {
-        return drafts[requestId]
-    }
+    override suspend fun getDraftForRequest(requestId: String): DraftEntity? =
+        drafts.values.find { it.requestId == requestId }
 
-    override fun getAllRequests(): Flow<List<RequestEntity>> {
-        return requestsFlow
-    }
+    override suspend fun getDraftById(id: String): DraftEntity? =
+        drafts[id]
+
+    override suspend fun getFieldsForDraft(draftId: String): List<RequestFieldEntity> =
+        fields.filter { it.draftId == draftId }
+
+    override suspend fun getBodyForDraft(draftId: String): RequestBodyEntity? =
+        bodies.values.find { it.draftId == draftId }
+
+    override fun getAllRequests(): Flow<List<RequestEntity>> =
+        flowOf(requests.values.toList())
 
     override suspend fun deleteRequest(id: String) {
         requests.remove(id)

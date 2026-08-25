@@ -46,4 +46,11 @@ class RequestRepositoryImpl(
     override suspend fun deleteRequest(id: String) {
         requestDao.deleteRequest(id)
     }
+
+    override suspend fun getDraftById(id: String): com.learn.reqlite.domain.model.Draft? {
+        val entity = requestDao.getDraftById(id) ?: return null
+        val fields = requestDao.getFieldsForDraft(id)
+        val body = requestDao.getBodyForDraft(id)
+        return entity.toDomain(fields, body)
+    }
 }
