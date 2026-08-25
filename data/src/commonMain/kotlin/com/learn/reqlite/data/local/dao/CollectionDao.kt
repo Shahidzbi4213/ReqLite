@@ -7,6 +7,7 @@ import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import androidx.room3.Update
 import com.learn.reqlite.data.local.entity.CollectionEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CollectionDao {
@@ -20,7 +21,7 @@ interface CollectionDao {
     suspend fun deleteCollection(collection: CollectionEntity)
 
     @Query("SELECT * FROM collections")
-    suspend fun getAllCollections(): List<CollectionEntity>
+    fun getAllCollections(): Flow<List<CollectionEntity>>
 
     @Query("SELECT * FROM collections WHERE id = :id")
     suspend fun getCollectionById(id: String): CollectionEntity?
