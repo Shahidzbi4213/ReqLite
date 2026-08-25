@@ -13,4 +13,8 @@ actual val platformModule: Module = module {
         getDatabaseBuilder(context)
             .build()
     }
+    
+    single<com.learn.reqlite.domain.repository.SecureStorage> {
+        com.learn.reqlite.data.local.storage.AndroidSecureStorage(get<Context>())
+    }
 }
