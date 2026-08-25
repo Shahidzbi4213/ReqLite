@@ -8,5 +8,7 @@ data class HistoryEntry(
     val statusCode: Int? = null,
     val durationMs: Long? = null,
     val timestamp: Long,
-    val responseArtifactId: String? = null
+    val responseArtifactId: String? = null,
+    val errorCode: String? = null,
+    val errorMessage: String? = null
 )

@@ -15,7 +15,9 @@ fun HistoryEntryEntity.toDomain(): HistoryEntry {
         statusCode = statusCode,
         durationMs = durationMs,
         timestamp = timestamp,
-        responseArtifactId = responseArtifactId
+        responseArtifactId = responseArtifactId,
+        errorCode = errorCode,
+        errorMessage = errorMessage
     )
 }
 
@@ -28,7 +30,9 @@ fun HistoryEntry.toEntity(): HistoryEntryEntity {
         statusCode = statusCode,
         durationMs = durationMs,
         timestamp = timestamp,
-        responseArtifactId = responseArtifactId
+        responseArtifactId = responseArtifactId,
+        errorCode = errorCode,
+        errorMessage = errorMessage
     )
 }
 

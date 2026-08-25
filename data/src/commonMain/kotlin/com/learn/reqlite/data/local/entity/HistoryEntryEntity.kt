@@ -35,5 +35,7 @@ data class HistoryEntryEntity(
     val statusCode: Int?,
     val durationMs: Long?,
     val timestamp: Long,
-    val responseArtifactId: String?
+    val responseArtifactId: String?,
+    val errorCode: String? = null,
+    val errorMessage: String? = null
 )
