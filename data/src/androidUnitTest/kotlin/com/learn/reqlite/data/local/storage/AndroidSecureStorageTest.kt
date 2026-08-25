@@ -7,6 +7,8 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
+import kotlinx.coroutines.runBlocking
+
 class AndroidSecureStorageTest {
 
     private lateinit var secureStorage: AndroidSecureStorage
@@ -18,7 +20,7 @@ class AndroidSecureStorageTest {
     }
 
     @Test
-    fun testSaveAndGetSecret() {
+    fun testSaveAndGetSecret() = runBlocking {
         val key = "test_key"
         val value = "super_secret_value"
 
@@ -29,7 +31,7 @@ class AndroidSecureStorageTest {
     }
 
     @Test
-    fun testDeleteSecret() {
+    fun testDeleteSecret() = runBlocking {
         val key = "test_key_delete"
         val value = "to_be_deleted"
 

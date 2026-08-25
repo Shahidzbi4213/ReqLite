@@ -1,7 +1,7 @@
 package com.learn.reqlite.domain.repository
 
 interface SecureStorage {
-    fun saveSecret(key: String, value: String)
-    fun getSecret(key: String): String?
-    fun deleteSecret(key: String)
+    suspend fun saveSecret(key: String, value: String)
+    suspend fun getSecret(key: String): String?
+    suspend fun deleteSecret(key: String)
 }
