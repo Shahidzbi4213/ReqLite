@@ -17,31 +17,27 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
 
+import com.learn.reqlite.ui.home.HomeScreen
+import com.learn.reqlite.ui.theme.ReqLiteTheme
+
 @Serializable
 object HomeDestination
 
 @Composable
 fun App() {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
-    ) {
-        Scaffold(
-            modifier = Modifier
-                .fillMaxSize(),
-        ) { paddingValues ->
-            val navController = rememberNavController()
-            NavHost(
-                navController = navController, startDestination = HomeDestination,
-                modifier = Modifier
-                    .padding(paddingValues)
-                    .fillMaxSize()
-            ) {
-
-                composable<HomeDestination> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = "Hello ReqLite!")
+    ReqLiteTheme {
+        val navController = rememberNavController()
+        NavHost(
+            navController = navController, 
+            startDestination = HomeDestination,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            composable<HomeDestination> {
+                HomeScreen(
+                    onNavigateToRequest = { url ->
+                        // TODO: Navigate to request details
                     }
-                }
+                )
             }
         }
     }
