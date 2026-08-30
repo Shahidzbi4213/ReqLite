@@ -15,7 +15,7 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
 
         compilerOptions {
-            jvmTarget = JvmTarget.JVM_21
+            jvmTarget = JvmTarget.JVM_17
         }
 
         androidResources {
@@ -30,6 +30,10 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "Shared"
             isStatic = true
+            export(project(":domain"))
+            export(project(":data"))
+            export(project(":di"))
+            export(project(":utils"))
         }
     }
 
@@ -43,6 +47,10 @@ kotlin {
             api(project(":data"))
             api(project(":di"))
             api(project(":utils"))
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
         }
     }
 }

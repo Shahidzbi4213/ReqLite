@@ -9,5 +9,10 @@ interface RequestRepository {
     suspend fun getRequestById(id: String): Request?
     fun getAllRequests(): Flow<List<Request>>
     suspend fun deleteRequest(id: String)
+
+    suspend fun insertDraft(draft: Draft)
     suspend fun getDraftById(id: String): Draft?
+    suspend fun getDraftForRequest(requestId: String): Draft?
+    fun getAllDrafts(): Flow<List<Draft>>
+    suspend fun deleteDraft(id: String)
 }

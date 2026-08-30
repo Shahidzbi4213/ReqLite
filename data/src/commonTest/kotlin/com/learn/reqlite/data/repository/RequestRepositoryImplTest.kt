@@ -25,6 +25,11 @@ class FakeRequestDao : RequestDao {
     private val drafts = mutableMapOf<String, DraftEntity>()
     
     private val requestsFlow = MutableStateFlow<List<RequestEntity>>(emptyList())
+    private val draftsFlow = MutableStateFlow<List<DraftEntity>>(emptyList())
+
+    private fun updateDraftsFlow() {
+        draftsFlow.value = drafts.values.toList()
+    }
 
     override suspend fun insertRequest(request: RequestEntity) {
         requests[request.id] = request
@@ -32,18 +37,17 @@ class FakeRequestDao : RequestDao {
     }
 
     override suspend fun insertRequestFields(newFields: List<RequestFieldEntity>) {
-        // Simple mock behavior
         fields.addAll(newFields)
     }
 
     override suspend fun insertRequestBody(body: RequestBodyEntity) {
-        body.requestId?.let {
-            bodies[it] = body
-        }
+        body.requestId?.let { bodies[it] = body }
+        body.draftId?.let { bodies[it] = body }
     }
 
     override suspend fun insertDraft(draft: DraftEntity) {
-        drafts[draft.requestId] = draft
+        drafts[draft.id] = draft
+        updateDraftsFlow()
     }
 
     override suspend fun getRequestById(id: String): RequestEntity? {
@@ -64,11 +68,13 @@ class FakeRequestDao : RequestDao {
     override suspend fun getDraftById(id: String): DraftEntity? =
         drafts[id]
 
+    override fun getAllDrafts(): Flow<List<DraftEntity>> = draftsFlow
+
     override suspend fun getFieldsForDraft(draftId: String): List<RequestFieldEntity> =
         fields.filter { it.draftId == draftId }
 
     override suspend fun getBodyForDraft(draftId: String): RequestBodyEntity? =
-        bodies.values.find { it.draftId == draftId }
+        bodies[draftId]
 
     override fun getAllRequests(): Flow<List<RequestEntity>> =
         flowOf(requests.values.toList())
@@ -79,6 +85,19 @@ class FakeRequestDao : RequestDao {
         bodies.remove(id)
         drafts.remove(id)
         requestsFlow.value = requests.values.toList()
+    }
+
+    override suspend fun deleteDraft(id: String) {
+        drafts.remove(id)
+        updateDraftsFlow()
+    }
+
+    override suspend fun deleteFieldsForDraft(draftId: String) {
+        fields.removeAll { it.draftId == draftId }
+    }
+
+    override suspend fun deleteBodyForDraft(draftId: String) {
+        bodies.remove(draftId)
     }
 }
 
@@ -109,5 +128,40 @@ class RequestRepositoryImplTest {
         assertEquals(request.id, retrieved?.id)
         assertEquals(1, retrieved?.headers?.size)
         assertEquals("Key", retrieved?.headers?.first()?.key)
+    }
+
+    @Test
+    fun testDraftCrudOperations() = runTest {
+        val dao = FakeRequestDao()
+        val repo = RequestRepositoryImpl(dao)
+
+        val draft = com.learn.reqlite.domain.model.Draft(
+            id = "d1",
+            requestId = "r1",
+            method = HttpMethod.POST,
+            url = "https://example.com/posts",
+            headers = listOf(RequestField("h1", "Content-Type", "application/json", true)),
+            queryParams = listOf(RequestField("q1", "debug", "true", true)),
+            body = RequestBody.TextBody("{\"test\": true}", "application/json"),
+            updatedAt = 200L
+        )
+
+        repo.insertDraft(draft)
+
+        val retrieved = repo.getDraftById("d1")
+        assertEquals("d1", retrieved?.id)
+        assertEquals("https://example.com/posts", retrieved?.url)
+        assertEquals(HttpMethod.POST, retrieved?.method)
+        assertEquals(1, retrieved?.headers?.size)
+
+        val retrievedForReq = repo.getDraftForRequest("r1")
+        assertEquals("d1", retrievedForReq?.id)
+
+        val allDrafts = repo.getAllDrafts().first()
+        assertEquals(1, allDrafts.size)
+        assertEquals("d1", allDrafts.first().id)
+
+        repo.deleteDraft("d1")
+        assertNull(repo.getDraftById("d1"))
     }
 }

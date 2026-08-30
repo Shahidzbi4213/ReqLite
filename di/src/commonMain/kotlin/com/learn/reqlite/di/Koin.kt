@@ -6,10 +6,7 @@ import org.koin.core.module.Module
 
 expect val platformModule: Module
 
-
-fun initKoin() = initKoin(emptyList())
-
-internal fun initKoin(extraModules: List<Module>) {
+fun initKoin(extraModules: List<Module> = emptyList()) {
     startKoin {
         modules(
             dataModule,

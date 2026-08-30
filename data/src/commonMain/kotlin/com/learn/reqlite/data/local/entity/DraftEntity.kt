@@ -22,7 +22,7 @@ import androidx.room3.PrimaryKey
 data class DraftEntity(
     @PrimaryKey
     val id: String,
-    val requestId: String,
+    val requestId: String? = null,
     val method: String,
     val url: String,
     val updatedAt: Long

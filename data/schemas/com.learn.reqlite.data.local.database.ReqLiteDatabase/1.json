@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "25f7417c99139e6c3083c0d85b6cbe74",
+    "identityHash": "f3e77ca77ebc977b1136f26542925c19",
     "entities": [
       {
         "tableName": "collections",
@@ -435,7 +435,7 @@
       },
       {
         "tableName": "drafts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `requestId` TEXT NOT NULL, `method` TEXT NOT NULL, `url` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`requestId`) REFERENCES `requests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `requestId` TEXT, `method` TEXT NOT NULL, `url` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`requestId`) REFERENCES `requests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -446,8 +446,7 @@
           {
             "fieldPath": "requestId",
             "columnName": "requestId",
-            "affinity": "TEXT",
-            "notNull": true
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "method",
@@ -614,7 +613,7 @@
       },
       {
         "tableName": "history_entries",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `requestId` TEXT NOT NULL, `requestMethod` TEXT NOT NULL, `requestUrl` TEXT NOT NULL, `statusCode` INTEGER, `durationMs` INTEGER, `timestamp` INTEGER NOT NULL, `responseArtifactId` TEXT, `errorCode` TEXT, `errorMessage` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`requestId`) REFERENCES `requests`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`responseArtifactId`) REFERENCES `response_artifacts`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `requestId` TEXT, `requestMethod` TEXT NOT NULL, `requestUrl` TEXT NOT NULL, `statusCode` INTEGER, `durationMs` INTEGER, `timestamp` INTEGER NOT NULL, `responseArtifactId` TEXT, `errorCode` TEXT, `errorMessage` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`requestId`) REFERENCES `requests`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`responseArtifactId`) REFERENCES `response_artifacts`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
         "fields": [
           {
             "fieldPath": "id",
@@ -625,8 +624,7 @@
           {
             "fieldPath": "requestId",
             "columnName": "requestId",
-            "affinity": "TEXT",
-            "notNull": true
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "requestMethod",
@@ -701,7 +699,7 @@
         "foreignKeys": [
           {
             "table": "requests",
-            "onDelete": "CASCADE",
+            "onDelete": "SET NULL",
             "onUpdate": "NO ACTION",
             "columns": [
               "requestId"
@@ -767,7 +765,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '25f7417c99139e6c3083c0d85b6cbe74')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f3e77ca77ebc977b1136f26542925c19')"
     ]
   }
 }

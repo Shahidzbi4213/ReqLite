@@ -40,15 +40,27 @@ interface RequestDao {
     @Query("SELECT * FROM drafts WHERE id = :id")
     suspend fun getDraftById(id: String): DraftEntity?
 
+    @Query("SELECT * FROM drafts ORDER BY updatedAt DESC")
+    fun getAllDrafts(): Flow<List<DraftEntity>>
+
     @Query("SELECT * FROM request_fields WHERE draftId = :draftId")
     suspend fun getFieldsForDraft(draftId: String): List<RequestFieldEntity>
 
     @Query("SELECT * FROM request_bodies WHERE draftId = :draftId")
     suspend fun getBodyForDraft(draftId: String): RequestBodyEntity?
 
-    @Query("SELECT * FROM requests")
+    @Query("SELECT * FROM requests ORDER BY updatedAt DESC")
     fun getAllRequests(): Flow<List<RequestEntity>>
 
     @Query("DELETE FROM requests WHERE id = :id")
     suspend fun deleteRequest(id: String)
+
+    @Query("DELETE FROM drafts WHERE id = :id")
+    suspend fun deleteDraft(id: String)
+
+    @Query("DELETE FROM request_fields WHERE draftId = :draftId")
+    suspend fun deleteFieldsForDraft(draftId: String)
+
+    @Query("DELETE FROM request_bodies WHERE draftId = :draftId")
+    suspend fun deleteBodyForDraft(draftId: String)
 }

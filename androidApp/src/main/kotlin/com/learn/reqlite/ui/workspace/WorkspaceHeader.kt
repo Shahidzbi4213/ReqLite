@@ -20,9 +20,6 @@ fun WorkspaceHeader(
     onUrlChange: (String) -> Unit,
     method: String,
     onMethodChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onCancel: () -> Unit,
-    isLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val methods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")
@@ -82,37 +79,6 @@ fun WorkspaceHeader(
                 singleLine = true,
                 modifier = Modifier.weight(0.65f)
             )
-        }
-
-        // Action Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isLoading) {
-                TextButton(
-                    onClick = onCancel,
-                    modifier = Modifier.padding(end = MaterialTheme.spacing.small)
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-            
-            ReqLiteButton(
-                onClick = onSend,
-                enabled = !isLoading && url.isNotBlank()
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(MaterialTheme.spacing.large),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = MaterialTheme.spacing.extraSmall
-                    )
-                } else {
-                    Text(stringResource(R.string.send))
-                }
-            }
         }
     }
 }

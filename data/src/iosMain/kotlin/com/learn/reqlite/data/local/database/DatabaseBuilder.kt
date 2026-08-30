@@ -9,16 +9,26 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 
 @OptIn(ExperimentalForeignApi::class)
-fun getDatabaseBuilder(): RoomDatabase.Builder<ReqLiteDatabase> {
-    val documentDirectory = NSFileManager.defaultManager.URLForDirectory(
-        directory = NSDocumentDirectory,
-        inDomain = NSUserDomainMask,
-        appropriateForURL = null,
-        create = false,
-        error = null
-    )
-    val dbFile = requireNotNull(documentDirectory?.path) + "/ReqLiteDatabase.db"
+fun getDatabaseBuilder(customPath: String? = null): RoomDatabase.Builder<ReqLiteDatabase> {
+    val dbFile = if (customPath != null) {
+        customPath
+    } else {
+        val documentDirectory = NSFileManager.defaultManager.URLForDirectory(
+            directory = NSDocumentDirectory,
+            inDomain = NSUserDomainMask,
+            appropriateForURL = null,
+            create = false,
+            error = null
+        )
+        requireNotNull(documentDirectory?.path) + "/ReqLiteDatabase.db"
+    }
+
     return Room.databaseBuilder<ReqLiteDatabase>(
         name = dbFile
     ).setDriver(BundledSQLiteDriver())
+}
+
+fun getInMemoryDatabaseBuilder(): RoomDatabase.Builder<ReqLiteDatabase> {
+    return Room.inMemoryDatabaseBuilder<ReqLiteDatabase>()
+        .setDriver(BundledSQLiteDriver())
 }

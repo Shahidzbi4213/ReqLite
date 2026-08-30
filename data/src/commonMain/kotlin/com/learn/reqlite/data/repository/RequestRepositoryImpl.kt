@@ -3,6 +3,7 @@ package com.learn.reqlite.data.repository
 import com.learn.reqlite.data.local.dao.RequestDao
 import com.learn.reqlite.data.mapper.toDomain
 import com.learn.reqlite.data.mapper.toEntity
+import com.learn.reqlite.domain.model.Draft
 import com.learn.reqlite.domain.model.Request
 import com.learn.reqlite.domain.repository.RequestRepository
 import kotlinx.coroutines.flow.Flow
@@ -47,10 +48,47 @@ class RequestRepositoryImpl(
         requestDao.deleteRequest(id)
     }
 
-    override suspend fun getDraftById(id: String): com.learn.reqlite.domain.model.Draft? {
+    override suspend fun insertDraft(draft: Draft) {
+        requestDao.insertDraft(draft.toEntity())
+
+        val fields = draft.headers.map { it.toEntity(null, draft.id, "HEADER") } +
+                draft.queryParams.map { it.toEntity(null, draft.id, "QUERY_PARAM") }
+
+        if (fields.isNotEmpty()) {
+            requestDao.insertRequestFields(fields)
+        }
+
+        val bodyEntity = draft.body.toEntity(null, draft.id)
+        requestDao.insertRequestBody(bodyEntity)
+    }
+
+    override suspend fun getDraftById(id: String): Draft? {
         val entity = requestDao.getDraftById(id) ?: return null
         val fields = requestDao.getFieldsForDraft(id)
         val body = requestDao.getBodyForDraft(id)
         return entity.toDomain(fields, body)
+    }
+
+    override suspend fun getDraftForRequest(requestId: String): Draft? {
+        val entity = requestDao.getDraftForRequest(requestId) ?: return null
+        val fields = requestDao.getFieldsForDraft(entity.id)
+        val body = requestDao.getBodyForDraft(entity.id)
+        return entity.toDomain(fields, body)
+    }
+
+    override fun getAllDrafts(): Flow<List<Draft>> {
+        return requestDao.getAllDrafts().map { entities ->
+            entities.map { entity ->
+                val fields = requestDao.getFieldsForDraft(entity.id)
+                val body = requestDao.getBodyForDraft(entity.id)
+                entity.toDomain(fields, body)
+            }
+        }
+    }
+
+    override suspend fun deleteDraft(id: String) {
+        requestDao.deleteFieldsForDraft(id)
+        requestDao.deleteBodyForDraft(id)
+        requestDao.deleteDraft(id)
     }
 }

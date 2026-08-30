@@ -21,7 +21,11 @@ class FakeRequestRepository : RequestRepository {
     override suspend fun getRequestById(id: String): Request? = null
     override fun getAllRequests(): Flow<List<Request>> = flowOf()
     override suspend fun deleteRequest(id: String) {}
+    override suspend fun insertDraft(draft: Draft) { drafts[draft.id] = draft }
     override suspend fun getDraftById(id: String): Draft? = drafts[id]
+    override suspend fun getDraftForRequest(requestId: String): Draft? = drafts.values.find { it.requestId == requestId }
+    override fun getAllDrafts(): Flow<List<Draft>> = flowOf(drafts.values.toList())
+    override suspend fun deleteDraft(id: String) { drafts.remove(id) }
 }
 
 class FakeEnvironmentRepository : EnvironmentRepository {

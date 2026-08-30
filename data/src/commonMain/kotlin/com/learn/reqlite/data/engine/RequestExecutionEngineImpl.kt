@@ -29,7 +29,7 @@ class RequestExecutionEngineImpl(
     private val historyRepository: HistoryRepository
 ) : RequestExecutionEngine {
     
-    override suspend fun execute(draftId: String, environmentId: String?): HistoryEntry {
+    override suspend fun execute(draftId: String, environmentId: String?): Pair<HistoryEntry, String> {
         val draft = requestRepository.getDraftById(draftId) ?: throw IllegalArgumentException("Draft not found")
         
         val env = environmentId?.let { environmentRepository.getEnvironmentById(it) }
@@ -64,6 +64,7 @@ class RequestExecutionEngineImpl(
         val startTime = nowMs()
         var statusCode: Int? = null
         var responseArtifactId: String? = null
+        var responseBody: String = ""
         var durationMs: Long? = null
         
         try {
@@ -92,7 +93,7 @@ class RequestExecutionEngineImpl(
                 }
             }
             
-            val responseBody = statement.bodyAsText()
+            responseBody = statement.bodyAsText()
             statusCode = statement.status.value
             durationMs = nowMs() - startTime
             
@@ -115,7 +116,7 @@ class RequestExecutionEngineImpl(
                 errorMessage = mapped.message
             )
             historyRepository.insertHistoryEntry(failedEntry)
-            return failedEntry
+            return Pair(failedEntry, "")
         }
         
         val finalEntry = pendingEntry.copy(
@@ -124,6 +125,6 @@ class RequestExecutionEngineImpl(
             responseArtifactId = responseArtifactId
         )
         historyRepository.insertHistoryEntry(finalEntry)
-        return finalEntry
+        return Pair(finalEntry, responseBody)
     }
 }

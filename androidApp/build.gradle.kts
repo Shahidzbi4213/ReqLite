@@ -15,9 +15,16 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.material.icons.core)
     implementation(libs.compose.material3)
+    implementation(libs.compose.material3.adaptive)
+    implementation(libs.compose.material3.adaptive.layout)
+    implementation(libs.compose.material3.adaptive.navigation)
     implementation(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.serialization.json)
     
+    implementation(libs.koin.compose.viewmodel)
+    implementation(libs.zxing.android)
     testImplementation(libs.junit)
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
@@ -45,10 +52,21 @@ android {
     }
 
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
         }
     }
-
 }
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+

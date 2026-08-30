@@ -2,7 +2,7 @@ package com.learn.reqlite.domain.model
 
 data class HistoryEntry(
     val id: String,
-    val requestId: String,
+    val requestId: String? = null,
     val requestMethod: HttpMethod,
     val requestUrl: String,
     val statusCode: Int? = null,

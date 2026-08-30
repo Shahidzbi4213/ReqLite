@@ -12,7 +12,7 @@ import androidx.room3.PrimaryKey
             entity = RequestEntity::class,
             parentColumns = ["id"],
             childColumns = ["requestId"],
-            onDelete = ForeignKey.CASCADE
+            onDelete = ForeignKey.SET_NULL
         ),
         ForeignKey(
             entity = ResponseArtifactEntity::class,
@@ -29,7 +29,7 @@ import androidx.room3.PrimaryKey
 data class HistoryEntryEntity(
     @PrimaryKey
     val id: String,
-    val requestId: String,
+    val requestId: String? = null,
     val requestMethod: String,
     val requestUrl: String,
     val statusCode: Int?,

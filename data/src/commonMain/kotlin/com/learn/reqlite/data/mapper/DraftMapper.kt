@@ -21,3 +21,13 @@ fun DraftEntity.toDomain(
         updatedAt = this.updatedAt
     )
 }
+
+fun Draft.toEntity(): DraftEntity {
+    return DraftEntity(
+        id = this.id,
+        requestId = this.requestId,
+        method = this.method.name,
+        url = this.url,
+        updatedAt = this.updatedAt
+    )
+}
