@@ -4,10 +4,14 @@ import Shared
 struct WorkspaceView: View {
     @StateObject private var viewModel = WorkspaceViewModel()
     @State private var showingQRScanner = false
+    @State private var selectedItem: String? = "workspace"
 
     var body: some View {
         NavigationSplitView {
-            List {
+            List(selection: $selectedItem) {
+                NavigationLink(value: "workspace") {
+                    Label("New Request", systemImage: "plus.circle")
+                }
                 Text("History / Collections")
                     .foregroundColor(.secondary)
             }
