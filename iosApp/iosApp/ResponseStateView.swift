@@ -5,6 +5,8 @@ struct ResponseStateView: View {
     let state: ExecutionState
     @Binding var responseTab: WorkspaceViewModel.ResponseTab
     @State private var searchQuery: String = ""
+    @State private var filteredText: String? = nil
+    @State private var isFiltering: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -117,29 +119,17 @@ struct ResponseStateView: View {
                                         .padding()
                                 } else {
                                     let actualText = responseBody
-                                    let displayedText: String
-                                    if searchQuery.isEmpty {
-                                        displayedText = actualText
-                                    } else {
-                                        // Attempt to parse as JSON and filter
-                                        if let data = actualText.data(using: .utf8),
-                                           let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
-                                           let filteredData = filterJSON(jsonObject, query: searchQuery),
-                                           let prettyString = String(data: filteredData, encoding: .utf8) {
-                                            displayedText = prettyString
-                                        } else {
-                                            // Fallback to line filtering for non-JSON
-                                            displayedText = actualText.components(separatedBy: .newlines)
-                                                .filter { $0.localizedCaseInsensitiveContains(searchQuery) }
-                                                .joined(separator: "\n")
-                                        }
-                                    }
                                     
-                                    Text(displayedText)
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(.primary)
-                                        .padding()
-                                        .textSelection(.enabled)
+                                    if isFiltering {
+                                        ProgressView()
+                                            .padding()
+                                    } else {
+                                        Text(searchQuery.isEmpty ? actualText : (filteredText ?? actualText))
+                                            .font(.system(size: 13, design: .monospaced))
+                                            .foregroundColor(.primary)
+                                            .padding()
+                                            .textSelection(.enabled)
+                                    }
                                 }
 
                             case .headers:
@@ -173,6 +163,34 @@ struct ResponseStateView: View {
                     .background(Color(UIColor.systemBackground))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .task(id: searchQuery) {
+                    guard !searchQuery.isEmpty else {
+                        filteredText = nil
+                        return
+                    }
+                    isFiltering = true
+                    defer { isFiltering = false }
+                    
+                    let query = searchQuery
+                    let text = responseBody
+                    
+                    let result = await Task.detached { () -> String in
+                        if let data = text.data(using: .utf8),
+                           let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+                           let filteredData = Self.filterJSON(jsonObject, query: query),
+                           let prettyString = String(data: filteredData, encoding: .utf8) {
+                            return prettyString
+                        } else {
+                            return text.components(separatedBy: .newlines)
+                                .filter { $0.localizedCaseInsensitiveContains(query) }
+                                .joined(separator: "\n")
+                        }
+                    }.value
+                    
+                    if !Task.isCancelled {
+                        filteredText = result
+                    }
+                }
             }
         }
     }
@@ -201,7 +219,7 @@ struct ResponseStateView: View {
         }
     }
 
-    private func filterJSON(_ json: Any, query: String) -> Data? {
+    private static func filterJSON(_ json: Any, query: String) -> Data? {
         let q = query.lowercased()
         func filterNode(_ node: Any) -> Any? {
             if let dict = node as? [String: Any] {

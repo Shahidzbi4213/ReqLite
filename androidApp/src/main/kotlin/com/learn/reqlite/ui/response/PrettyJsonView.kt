@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.learn.reqlite.ui.response.json.JsonTreeParser
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 @Composable
 fun PrettyJsonView(
     rawJson: String,
@@ -29,13 +32,17 @@ fun PrettyJsonView(
     var copiedNotice by remember { mutableStateOf<String?>(null) }
     val isDark = isSystemInDarkTheme()
 
-    val formattedJson = remember(rawJson) {
-        JsonTreeParser.formatPrettyJson(rawJson)
+    val parseResult by produceState<Pair<String, AnnotatedString>?>(initialValue = null, rawJson, isDark) {
+        value = null
+        value = withContext(Dispatchers.Default) {
+            val formatted = JsonTreeParser.formatPrettyJson(rawJson)
+            val highlighted = JsonTreeParser.highlightJsonSyntax(formatted, isDark = isDark)
+            formatted to highlighted
+        }
     }
 
-    val highlightedText = remember(formattedJson, isDark) {
-        JsonTreeParser.highlightJsonSyntax(formattedJson, isDark = isDark)
-    }
+    val formattedJson = parseResult?.first ?: ""
+    val highlightedText = parseResult?.second
 
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
@@ -92,16 +99,22 @@ fun PrettyJsonView(
                     .fillMaxSize()
                     .padding(12.dp)
             ) {
-                SelectionContainer {
-                    Text(
-                        text = highlightedText,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        modifier = Modifier
-                            .verticalScroll(verticalScrollState)
-                            .horizontalScroll(horizontalScrollState)
-                    )
+                if (highlightedText == null) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
+                } else {
+                    SelectionContainer {
+                        Text(
+                            text = highlightedText,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier
+                                .verticalScroll(verticalScrollState)
+                                .horizontalScroll(horizontalScrollState)
+                        )
+                    }
                 }
             }
         }
