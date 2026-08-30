@@ -115,17 +115,17 @@ class WorkspaceViewModelEnvironmentTest {
     class FakeRequestExecutionEngine : RequestExecutionEngine {
         var lastEnvironmentId: String? = null
 
-        override suspend fun execute(draftId: String, environmentId: String?): HistoryEntry {
+        override suspend fun execute(draftId: String, environmentId: String?): Pair<HistoryEntry, String> {
             lastEnvironmentId = environmentId
-            return HistoryEntry(
+            return Pair(HistoryEntry(
                 id = "hist_1",
                 requestId = draftId,
                 requestMethod = HttpMethod.GET,
                 requestUrl = "https://example.com",
                 statusCode = 200,
                 durationMs = 50,
-                timestamp = 1000
-            )
+                timestamp = 1000L
+            ), "")
         }
     }
 }

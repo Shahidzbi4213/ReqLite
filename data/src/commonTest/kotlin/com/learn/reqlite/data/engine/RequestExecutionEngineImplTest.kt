@@ -110,10 +110,10 @@ class RequestExecutionEngineImplTest {
         
         val result = engine.execute("d1", "e1")
         
-        assertEquals(200, result.statusCode)
-        assertEquals("https://example.com/api/test", result.requestUrl)
+        assertEquals(200, result.first.statusCode)
+        assertEquals("https://example.com/api/test", result.first.requestUrl)
         
-        val artifactId = result.responseArtifactId
+        val artifactId = result.first.responseArtifactId
         assertTrue(artifactId != null)
         
         val artifact = historyRepo.artifacts.find { it.id == artifactId }

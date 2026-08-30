@@ -67,20 +67,20 @@ class WorkspaceViewModelTest {
     class FakeRequestExecutionEngine : RequestExecutionEngine {
         var shouldFail = false
 
-        override suspend fun execute(draftId: String, environmentId: String?): HistoryEntry {
+        override suspend fun execute(draftId: String, environmentId: String?): Pair<HistoryEntry, String> {
             if (shouldFail) {
                 throw Exception("Engine failure")
             }
-            return HistoryEntry(
+            return Pair(HistoryEntry(
                 id = "hist_1",
                 requestId = draftId,
                 requestMethod = HttpMethod.GET,
                 requestUrl = "https://example.com",
                 statusCode = 200,
                 durationMs = 100,
-                timestamp = 1000,
+                timestamp = 1000L,
                 responseArtifactId = "art_1"
-            )
+            ), "")
         }
     }
 }

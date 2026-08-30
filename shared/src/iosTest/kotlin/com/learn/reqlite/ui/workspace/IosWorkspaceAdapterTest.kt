@@ -88,9 +88,9 @@ class IosWorkspaceAdapterTest {
     class FakeEngine : RequestExecutionEngine {
         var lastEnvironmentId: String? = null
 
-        override suspend fun execute(draftId: String, environmentId: String?): HistoryEntry {
+        override suspend fun execute(draftId: String, environmentId: String?): Pair<HistoryEntry, String> {
             lastEnvironmentId = environmentId
-            return HistoryEntry(
+            val entry = HistoryEntry(
                 id = "hist_1",
                 requestId = draftId,
                 requestMethod = HttpMethod.POST,
@@ -99,6 +99,7 @@ class IosWorkspaceAdapterTest {
                 durationMs = 45,
                 timestamp = 1000L
             )
+            return Pair(entry, "response_artifact_id")
         }
     }
 

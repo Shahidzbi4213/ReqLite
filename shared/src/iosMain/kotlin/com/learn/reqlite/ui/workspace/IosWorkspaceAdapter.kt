@@ -82,21 +82,18 @@ class IosWorkspaceAdapter(
                 "OPTIONS" -> HttpMethod.OPTIONS
                 else -> HttpMethod.GET
             }
-            val request = Request(
-                id = "ios_req_${time(null)}",
-                collectionId = "default_collection",
-                folderId = null,
-                name = "Quick Request",
+            val draft = Draft(
+                id = "ios_draft_${time(null)}",
+                requestId = null,
                 method = method,
                 url = url,
                 headers = emptyList(),
                 queryParams = emptyList(),
                 body = RequestBody.NoBody,
-                createdAt = 1000L,
                 updatedAt = 1000L
             )
-            requestRepository.insertRequest(request)
-            onCreated(request.id)
+            requestRepository.insertDraft(draft)
+            onCreated(draft.id)
         }
     }
 
