@@ -6,6 +6,12 @@ import org.koin.dsl.module
 
 val appModule = module {
     factory {
+        com.learn.reqlite.ui.response.ResponseViewModel(
+            historyRepository = get()
+        )
+    }
+
+    factory {
         HomeViewModel(
             historyRepository = get(),
             requestRepository = get()

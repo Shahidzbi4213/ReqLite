@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
 import com.learn.reqlite.ui.home.HomeScreen
 import com.learn.reqlite.ui.theme.ReqLiteTheme
 import com.learn.reqlite.ui.workspace.WorkspaceScreen
+import com.learn.reqlite.ui.response.ResponseScreen
 
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
@@ -24,7 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 
 @Serializable
-object HomeDestination
+object MainListDetailDestination
 
 @Serializable
 data class WorkspaceDestination(
@@ -32,50 +33,62 @@ data class WorkspaceDestination(
     val initialMethod: String = "GET"
 )
 
+@Serializable
+data class ResponseDestination(
+    val historyId: String
+)
+
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun App() {
     ReqLiteTheme {
-        val navigator = rememberListDetailPaneScaffoldNavigator<WorkspaceDestination>()
+        val navController = rememberNavController()
         
-        ListDetailPaneScaffold(
-            directive = navigator.scaffoldDirective,
-            value = navigator.scaffoldValue,
-            listPane = {
-                HomeScreen(
-                    onNavigateToRequest = { url, method ->
-                        navigator.navigateTo(
-                            ListDetailPaneScaffoldRole.Detail,
-                            WorkspaceDestination(
-                                initialUrl = url,
-                                initialMethod = method ?: "GET"
-                            )
+        NavHost(navController = navController, startDestination = MainListDetailDestination) {
+            composable<MainListDetailDestination> {
+                val navigator = rememberListDetailPaneScaffoldNavigator<WorkspaceDestination>()
+                
+                ListDetailPaneScaffold(
+                    directive = navigator.scaffoldDirective,
+                    value = navigator.scaffoldValue,
+                    listPane = {
+                        HomeScreen(
+                            onNavigateToRequest = { url, method ->
+                                navigator.navigateTo(
+                                    ListDetailPaneScaffoldRole.Detail,
+                                    WorkspaceDestination(
+                                        initialUrl = url,
+                                        initialMethod = method ?: "GET"
+                                    )
+                                )
+                            }
+                        )
+                    },
+                    detailPane = {
+                        val destination = navigator.currentDestination?.content
+                        WorkspaceScreen(
+                            initialUrl = destination?.initialUrl,
+                            initialMethod = destination?.initialMethod ?: "GET",
+                            onNavigateBack = {
+                                if (navigator.canNavigateBack()) {
+                                    navigator.navigateBack()
+                                }
+                            },
+                            onNavigateToResponse = { historyId ->
+                                navController.navigate(ResponseDestination(historyId = historyId))
+                            }
                         )
                     }
                 )
-            },
-            detailPane = {
-                val destination = navigator.currentDestination?.content
-                if (destination != null) {
-                    WorkspaceScreen(
-                        initialUrl = destination.initialUrl,
-                        initialMethod = destination.initialMethod,
-                        onNavigateBack = {
-                            if (navigator.canNavigateBack()) {
-                                navigator.navigateBack()
-                            }
-                        }
-                    )
-                } else {
-                    WorkspaceScreen(
-                        onNavigateBack = {
-                            if (navigator.canNavigateBack()) {
-                                navigator.navigateBack()
-                            }
-                        }
-                    )
-                }
             }
-        )
+            
+            composable<ResponseDestination> { backStackEntry ->
+                val responseDest = backStackEntry.toRoute<ResponseDestination>()
+                ResponseScreen(
+                    historyId = responseDest.historyId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+        }
     }
 }
