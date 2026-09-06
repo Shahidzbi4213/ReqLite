@@ -4,12 +4,12 @@ import Shared
 @main
 struct iOSApp: App {
     init() {
-        KoinKt.doInitKoin()
+        DiHelper.shared.doInitKoin()
     }
-    
+
     var body: some Scene {
         WindowGroup {
-            Text("Hello ReqLite!")
+            WorkspaceView()
         }
     }
 }
