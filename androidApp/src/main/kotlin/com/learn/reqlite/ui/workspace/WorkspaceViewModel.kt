@@ -367,6 +367,10 @@ class WorkspaceViewModel(
         }
     }
 
+    fun resetExecutionState() {
+        _executionState.value = ExecutionUiState.Idle
+    }
+
     fun cancelExecution() {
         activeExecutionJob?.cancel()
         _executionState.value = ExecutionUiState.Idle

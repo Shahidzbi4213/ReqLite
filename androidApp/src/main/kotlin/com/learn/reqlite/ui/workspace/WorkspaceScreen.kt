@@ -33,6 +33,7 @@ fun WorkspaceScreen(
     initialUrl: String? = null,
     initialMethod: String = "GET",
     onNavigateBack: () -> Unit = {},
+    onNavigateToResponse: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: WorkspaceViewModel = koinViewModel()
 ) {
@@ -66,6 +67,14 @@ fun WorkspaceScreen(
         }
     }
 
+    LaunchedEffect(executionState) {
+        if (executionState is ExecutionUiState.Success) {
+            val historyId = (executionState as ExecutionUiState.Success).historyEntry.id
+            onNavigateToResponse(historyId)
+            viewModel.resetExecutionState()
+        }
+    }
+
     Scaffold(
         topBar = {
             WorkspaceTopBar(
@@ -91,14 +100,7 @@ fun WorkspaceScreen(
         },
         bottomBar = {
             BottomAppBar(
-                actions = {
-                    EnvironmentSelector(
-                        activeEnvironment = activeEnvironment,
-                        environments = environments,
-                        onSelectEnvironment = { viewModel.selectEnvironment(it) },
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                },
+                actions = { },
                 floatingActionButton = {
                     FloatingActionButton(
                         onClick = {
