@@ -8,6 +8,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.serialization.Serializable
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
 
 import com.learn.reqlite.ui.home.HomeScreen
 import com.learn.reqlite.ui.theme.ReqLiteTheme
@@ -28,10 +30,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 object MainListDetailDestination
 
 @Serializable
+@Parcelize
 data class WorkspaceDestination(
     val initialUrl: String? = null,
     val initialMethod: String = "GET"
-)
+) : Parcelable
 
 @Serializable
 data class ResponseDestination(
