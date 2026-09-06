@@ -99,25 +99,26 @@ fun RequestFieldEditor(
                     }
                 )
             }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        ReqLiteButton(
-            onClick = {
-                val newList = fields.toMutableList()
-                newList.add(
-                    RequestField(
+            
+            // Empty ghost row at the bottom
+            item {
+                RequestFieldRow(
+                    field = RequestField(
                         id = UUID.randomUUID().toString(),
                         key = "",
                         value = ""
-                    )
+                    ),
+                    onFieldChange = { newField ->
+                        if (newField.key.isNotEmpty() || newField.value.isNotEmpty()) {
+                            val newList = fields.toMutableList()
+                            newList.add(newField)
+                            onFieldsChange(newList)
+                        }
+                    },
+                    onDelete = {}, // Ghost row can't be deleted
+                    isGhost = true
                 )
-                onFieldsChange(newList)
-            },
-            modifier = Modifier.align(Alignment.Start)
-        ) {
-            Text(addButtonText)
+            }
         }
     }
 }
@@ -127,6 +128,7 @@ fun RequestFieldRow(
     field: RequestField,
     onFieldChange: (RequestField) -> Unit,
     onDelete: () -> Unit,
+    isGhost: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -134,12 +136,16 @@ fun RequestFieldRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(
-            checked = field.isEnabled,
-            onCheckedChange = { isChecked ->
-                onFieldChange(field.copy(isEnabled = isChecked))
-            }
-        )
+        if (!isGhost) {
+            Checkbox(
+                checked = field.isEnabled,
+                onCheckedChange = { isChecked ->
+                    onFieldChange(field.copy(isEnabled = isChecked))
+                }
+            )
+        } else {
+            Spacer(modifier = Modifier.width(48.dp)) // Checkbox width roughly
+        }
         
         ReqLiteTextField(
             value = field.key,
@@ -155,12 +161,17 @@ fun RequestFieldRow(
             modifier = Modifier.weight(1f)
         )
         
-        IconButton(onClick = onDelete) {
-            Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = "Delete Field",
-                tint = MaterialTheme.colorScheme.error
-            )
+        if (!isGhost) {
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete Field",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        } else {
+            Spacer(modifier = Modifier.width(48.dp)) // IconButton width
         }
     }
 }
+
