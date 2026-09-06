@@ -17,7 +17,8 @@ struct WorkspaceView: View {
             }
             .navigationTitle("ReqLite")
         } detail: {
-            VStack(spacing: 0) {
+            NavigationStack {
+                VStack(spacing: 0) {
                 // Request Header (Method, URL, Send)
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
@@ -72,21 +73,36 @@ struct WorkspaceView: View {
                 Divider()
 
                 // Response Area
-                ResponseStateView(
-                    state: viewModel.executionState,
-                    responseTab: $viewModel.responseTab
-                )
+                if case .success = viewModel.executionState {
+                    Spacer()
+                } else {
+                    ResponseStateView(
+                        state: viewModel.executionState,
+                        responseTab: $viewModel.responseTab
+                    )
+                }
+            } // End of VStack
+            .navigationDestination(isPresented: Binding(
+                get: { 
+                    if case .success = viewModel.executionState { return true }
+                    return false
+                },
+                set: { isPresenting in
+                    if !isPresenting {
+                        viewModel.executionState = .idle
+                    }
+                }
+            )) {
+                if case .success(let history, let responseBody) = viewModel.executionState {
+                    FullScreenResponseView(history: history, responseBody: responseBody, responseTab: $viewModel.responseTab)
+                }
             }
             .frame(maxWidth: 800)
             .navigationTitle("ReqLite")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .bottomBar) {
-                    EnvironmentBadgeView(
-                        activeEnvironment: viewModel.activeEnvironment,
-                        environments: viewModel.environments,
-                        onSelect: { viewModel.selectEnvironment($0) }
-                    )
+                    
                     
                     if #available(iOS 16.0, *) {
                         Button(action: { showingQRScanner = true }) {
@@ -150,6 +166,7 @@ struct WorkspaceView: View {
                         }
                     ))
                 }
+            }
             }
         }
     }
