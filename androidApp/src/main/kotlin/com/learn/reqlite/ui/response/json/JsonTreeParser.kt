@@ -89,6 +89,14 @@ object JsonTreeParser {
         }
     }
 
+    fun highlightJsonSyntaxLines(
+        jsonString: String,
+        isDark: Boolean = true
+    ): List<AnnotatedString> {
+        val lines = jsonString.lines()
+        return lines.map { highlightJsonSyntax(it, isDark) }
+    }
+
     fun highlightJsonSyntax(
         jsonString: String,
         isDark: Boolean = true
