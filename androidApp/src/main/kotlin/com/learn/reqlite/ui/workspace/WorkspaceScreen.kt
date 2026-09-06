@@ -1,4 +1,5 @@
 package com.learn.reqlite.ui.workspace
+import com.learn.reqlite.ui.response.ResponseCache
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -69,8 +70,9 @@ fun WorkspaceScreen(
 
     LaunchedEffect(executionState) {
         if (executionState is ExecutionUiState.Success) {
-            val historyId = (executionState as ExecutionUiState.Success).historyEntry.id
-            onNavigateToResponse(historyId)
+            val successState = executionState as ExecutionUiState.Success
+            ResponseCache.currentResponse = successState.response
+            onNavigateToResponse(successState.historyEntry.id)
             viewModel.resetExecutionState()
         }
     }
