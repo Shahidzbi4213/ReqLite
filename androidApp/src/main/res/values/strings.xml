@@ -2,17 +2,4 @@
     <string name="app_name">ReqLite</string>
     <string name="back">Back</string>
     <string name="no_data_available">No data available</string>
-    <string name="new_request">New Request</string>
-    <string name="quick_request">Quick Request</string>
-    <string name="quick_request_hint">https://...</string>
-    <string name="send_request">Send Request</string>
-    <string name="import_from_curl">Import from cURL</string>
-    <string name="curl_hint">curl -X GET ...</string>
-    <string name="import_action">Import</string>
-    <string name="recent_requests">Recent Requests</string>
-    <string name="drafts">Drafts</string>
-    <string name="method">Method</string>
-    <string name="url">URL</string>
-    <string name="send">Send</string>
-    <string name="cancel">Cancel</string>
 </resources>
