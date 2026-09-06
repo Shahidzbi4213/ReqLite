@@ -21,6 +21,9 @@ interface HistoryDao {
 
     @Query("SELECT * FROM history_entries WHERE requestId = :requestId ORDER BY timestamp DESC")
     fun getHistoryForRequest(requestId: String): Flow<List<HistoryEntryEntity>>
+    @Query("SELECT * FROM history_entries WHERE id = :id")
+    suspend fun getHistoryEntryById(id: String): HistoryEntryEntity?
+
 
     @Query("SELECT * FROM response_artifacts WHERE id = :id")
     suspend fun getResponseArtifactById(id: String): ResponseArtifactEntity?

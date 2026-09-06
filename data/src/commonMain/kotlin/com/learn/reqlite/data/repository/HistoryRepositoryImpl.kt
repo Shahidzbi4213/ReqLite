@@ -27,6 +27,10 @@ class HistoryRepositoryImpl(
         }
     }
 
+    override suspend fun getHistoryEntryById(id: String): HistoryEntry? {
+        return historyDao.getHistoryEntryById(id)?.toDomain()
+    }
+
     override fun getHistoryForRequest(requestId: String): Flow<List<HistoryEntry>> {
         return historyDao.getHistoryForRequest(requestId).map { entities ->
             entities.map { it.toDomain() }

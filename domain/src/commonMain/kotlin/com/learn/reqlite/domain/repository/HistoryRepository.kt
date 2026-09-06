@@ -9,6 +9,8 @@ interface HistoryRepository {
     suspend fun insertResponseArtifact(artifact: ResponseArtifact)
     fun getAllHistoryEntries(): Flow<List<HistoryEntry>>
     fun getHistoryForRequest(requestId: String): Flow<List<HistoryEntry>>
+    suspend fun getHistoryEntryById(id: String): HistoryEntry?
+
     suspend fun getResponseArtifactById(id: String): ResponseArtifact?
     suspend fun deleteHistoryEntry(id: String)
     suspend fun clearHistory()
