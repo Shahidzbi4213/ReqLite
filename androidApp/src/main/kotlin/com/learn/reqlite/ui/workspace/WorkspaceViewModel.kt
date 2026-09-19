@@ -77,10 +77,27 @@ class WorkspaceViewModel(
     private val _pendingExecution = MutableStateFlow<PendingExecutionRequest?>(null)
     val pendingExecution: StateFlow<PendingExecutionRequest?> = _pendingExecution.asStateFlow()
 
+    private val _openDrafts = MutableStateFlow<List<Draft>>(emptyList())
+    val openDrafts: StateFlow<List<Draft>> = _openDrafts.asStateFlow()
+
+    private val _activeDraftId = MutableStateFlow<String?>(null)
+    val activeDraftId: StateFlow<String?> = _activeDraftId.asStateFlow()
+
     private var activeExecutionJob: Job? = null
 
     init {
         loadEnvironments()
+        observeDrafts()
+    }
+
+    private fun observeDrafts() {
+        if (requestRepository != null) {
+            viewModelScope.launch {
+                requestRepository.getAllDrafts().collect { drafts ->
+                    _openDrafts.value = drafts
+                }
+            }
+        }
     }
 
     fun setInitialState(
@@ -376,7 +393,7 @@ class WorkspaceViewModel(
         _executionState.value = ExecutionUiState.Idle
     }
 
-    fun saveDraft(draftId: String = "draft_${nowMs()}") {
+    fun saveDraft(draftId: String = _activeDraftId.value ?: "draft_${nowMs()}") {
         viewModelScope.launch {
             val draft = Draft(
                 id = draftId,
@@ -389,6 +406,7 @@ class WorkspaceViewModel(
                 updatedAt = nowMs()
             )
             requestRepository?.insertDraft(draft)
+            _activeDraftId.value = draftId
         }
     }
 
@@ -400,7 +418,25 @@ class WorkspaceViewModel(
             _headers.value = draft.headers
             _queryParams.value = draft.queryParams
             _body.value = draft.body
+            _activeDraftId.value = draftId
         }
+    }
+
+    fun switchTab(draftId: String) {
+        saveDraft() // Save current state
+        loadDraft(draftId)
+    }
+
+    fun createNewTab() {
+        saveDraft() // Save current state
+        val newDraftId = "draft_${nowMs()}"
+        _url.value = ""
+        _method.value = "GET"
+        _headers.value = emptyList()
+        _queryParams.value = emptyList()
+        _body.value = RequestBody.NoBody
+        _activeDraftId.value = newDraftId
+        saveDraft(newDraftId)
     }
 
     private fun parseHttpMethod(name: String): com.learn.reqlite.domain.model.HttpMethod {

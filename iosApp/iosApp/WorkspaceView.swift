@@ -11,174 +11,236 @@ struct WorkspaceView: View {
             List(selection: $selectedItem) {
                 NavigationLink(value: "workspace") {
                     Label("New Request", systemImage: "plus.circle")
+                        .font(.system(size: 15, weight: .medium))
+                        .padding(.vertical, ReqTokens.Spacing.xs)
                 }
-                Text("History / Collections")
-                    .foregroundColor(.secondary)
+
+                Section("Workspaces") {
+                    Button {
+                        viewModel.showingHistorySheet = true
+                    } label: {
+                        HStack {
+                            Label("History", systemImage: "clock")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            if !viewModel.historyEntries.isEmpty {
+                                Text("\(viewModel.historyEntries.count)")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.accentColor)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, ReqTokens.Spacing.xxs)
+
+                    HStack {
+                        Label("Collections", systemImage: "folder")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, ReqTokens.Spacing.xxs)
+                }
+
+                if !viewModel.historyEntries.isEmpty {
+                    Section("Recent History") {
+                        ForEach(viewModel.historyEntries.prefix(5), id: \.id) { entry in
+                            Button {
+                                viewModel.loadHistoryEntry(entry)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text(entry.requestMethod.name)
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(ReqTokens.MethodColor.color(for: entry.requestMethod.name))
+                                        Spacer()
+                                        if let code = entry.statusCode?.intValue, code > 0 {
+                                            Text("\(code)")
+                                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                                .foregroundColor(code < 400 ? Color.green : Color.red)
+                                        }
+                                    }
+                                    Text(entry.requestUrl)
+                                        .font(.system(size: 12, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
             }
             .navigationTitle("ReqLite")
         } detail: {
             NavigationStack {
-                VStack(spacing: 0) {
-                // Request Header (Method, URL, Send)
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        // Method Selector
-                        Menu {
-                            ForEach(viewModel.availableMethods, id: \.self) { m in
-                                Button(action: { viewModel.method = m }) {
-                                    Text(m)
+                ZStack {
+                    // Fluid Liquid Glass Ambient Backdrop
+                    ReqAmbientBackdrop()
+                        .ignoresSafeArea()
+
+                    ScrollView {
+                        VStack(spacing: ReqTokens.Spacing.md) {
+                            // MARK: - Layer 2: Unified Request Composer
+                            ReqRequestComposer(
+                                method: $viewModel.method,
+                                url: $viewModel.url,
+                                availableMethods: viewModel.availableMethods,
+                                onCommit: {
+                                    viewModel.onSendClicked()
+                                }
+                            )
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+                            .padding(.top, ReqTokens.Spacing.sm)
+
+                            // MARK: - Layer 2: Request Tabs (Liquid Glass Segmented Control)
+                            ReqGlassSegmentedControl(
+                                items: WorkspaceViewModel.RequestTab.allCases,
+                                selection: $viewModel.selectedTab
+                            )
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+
+                            // MARK: - Layer 1: Request Tab Content (Luminous Frosted Glass Card)
+                            Group {
+                                switch viewModel.selectedTab {
+                                case .params:
+                                    ReqParamsTabView(params: $viewModel.queryParams)
+                                case .headers:
+                                    ReqHeadersTabView(headers: $viewModel.headers)
+                                case .auth:
+                                    ReqAuthTabView(authType: $viewModel.authType, authToken: $viewModel.authToken)
+                                case .body:
+                                    ReqBodyTabView(bodyText: $viewModel.requestBody)
                                 }
                             }
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+
+                            // MARK: - Response Area (Liquid Glass Layer)
+                            ResponseStateView(
+                                state: viewModel.executionState,
+                                responseTab: $viewModel.responseTab
+                            )
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+                            .padding(.bottom, ReqTokens.Spacing.xl * 2)
+                        }
+                        .frame(maxWidth: 800)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .scrollContentBackground(.hidden)
+                }
+                .navigationTitle("ReqLite")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            viewModel.showingHistorySheet = true
                         } label: {
                             HStack(spacing: 4) {
-                                Text(viewModel.method)
-                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                                    .foregroundColor(methodColor(for: viewModel.method))
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.system(size: 14, weight: .semibold))
+                                if !viewModel.historyEntries.isEmpty {
+                                    Text("\(viewModel.historyEntries.count)")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                }
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(methodColor(for: viewModel.method).opacity(0.12))
-                            .cornerRadius(8)
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, ReqTokens.Spacing.xs)
+                            .padding(.vertical, 4)
+                            .reqGlass(.quiet, cornerRadius: ReqTokens.Radius.pill)
                         }
-
-                        // URL Field
-                        TextField("Enter request URL", text: $viewModel.url)
-                            .font(.system(size: 14, design: .monospaced))
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(Color(UIColor.secondarySystemBackground))
-                            .cornerRadius(8)
-
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
 
-                    // Request Tabs
-                    Picker("Request Tab", selection: $viewModel.selectedTab) {
-                        ForEach(WorkspaceViewModel.RequestTab.allCases) { tab in
-                            Text(tab.rawValue).tag(tab)
-                        }
+                    // Environment Badge in navigation bar
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        EnvironmentBadgeView(
+                            activeEnvironment: viewModel.activeEnvironment,
+                            environments: viewModel.environments,
+                            onSelect: { env in
+                                viewModel.selectEnvironment(env)
+                            }
+                        )
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
                 }
-                .background(Color(UIColor.systemBackground))
-
-                Divider()
-
-                // Response Area
-                if case .success = viewModel.executionState {
-                    Spacer()
-                } else {
-                    ResponseStateView(
-                        state: viewModel.executionState,
-                        responseTab: $viewModel.responseTab
+                .safeAreaInset(edge: .bottom) {
+                    // Floating Liquid Glass Action Bar
+                    ReqBottomActionBar(
+                        executionState: viewModel.executionState,
+                        onQRScan: {
+                            showingQRScanner = true
+                        },
+                        onSend: {
+                            viewModel.onSendClicked()
+                        },
+                        onCancel: {
+                            viewModel.cancelExecution()
+                        }
+                    )
+                    .padding(.horizontal, ReqTokens.Spacing.md)
+                    .padding(.bottom, ReqTokens.Spacing.xs)
+                }
+                .navigationDestination(isPresented: Binding(
+                    get: {
+                        if case .success = viewModel.executionState { return true }
+                        return false
+                    },
+                    set: { isPresenting in
+                        if !isPresenting {
+                            viewModel.executionState = .idle
+                        }
+                    }
+                )) {
+                    if case .success(let history, let responseBody) = viewModel.executionState {
+                        FullScreenResponseView(
+                            history: history,
+                            responseBody: responseBody,
+                            responseTab: $viewModel.responseTab
+                        )
+                    }
+                }
+                .alert("Protected Environment", isPresented: $viewModel.showProtectedWarning) {
+                    Button("Confirm & Send", role: .destructive) {
+                        viewModel.confirmProtectedExecution()
+                    }
+                    Button("Cancel", role: .cancel) {
+                        viewModel.dismissProtectedWarning()
+                    }
+                } message: {
+                    Text("You are about to execute a \(viewModel.method) request against the protected '\(viewModel.activeEnvironment?.name ?? "")' environment. This action may modify live production data.")
+                }
+                .sheet(isPresented: $showingQRScanner) {
+                    if #available(iOS 16.0, *) {
+                        QRScannerView(scannedCode: Binding(
+                            get: { nil },
+                            set: { newUrl in
+                                if let newUrl = newUrl {
+                                    viewModel.url = newUrl
+                                    viewModel.method = "GET"
+                                }
+                            }
+                        ))
+                    }
+                }
+                .sheet(isPresented: $viewModel.showingHistorySheet) {
+                    ReqHistorySheetView(
+                        entries: viewModel.historyEntries,
+                        onSelect: { entry in
+                            viewModel.loadHistoryEntry(entry)
+                        },
+                        onDelete: { id in
+                            viewModel.deleteHistoryEntry(id)
+                        },
+                        onClearAll: {
+                            viewModel.clearAllHistory()
+                        }
                     )
                 }
-            } // End of VStack
-            .navigationDestination(isPresented: Binding(
-                get: { 
-                    if case .success = viewModel.executionState { return true }
-                    return false
-                },
-                set: { isPresenting in
-                    if !isPresenting {
-                        viewModel.executionState = .idle
-                    }
-                }
-            )) {
-                if case .success(let history, let responseBody) = viewModel.executionState {
-                    FullScreenResponseView(history: history, responseBody: responseBody, responseTab: $viewModel.responseTab)
-                }
             }
-            .frame(maxWidth: 800)
-            .navigationTitle("ReqLite")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .bottomBar) {
-                    
-                    
-                    if #available(iOS 16.0, *) {
-                        Button(action: { showingQRScanner = true }) {
-                            Image(systemName: "qrcode.viewfinder")
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    if case .loading = viewModel.executionState {
-                        Button(action: { viewModel.cancelExecution() }) {
-                            HStack(spacing: 4) {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle())
-                                    .scaleEffect(0.8)
-                                Text("Cancel")
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.red)
-                            .cornerRadius(8)
-                        }
-                    } else {
-                        Button(action: { viewModel.onSendClicked() }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 12))
-                                Text("Send")
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Color.blue)
-                            .cornerRadius(8)
-                        }
-                    }
-                }
-            }
-            .alert("Protected Environment", isPresented: $viewModel.showProtectedWarning) {
-                Button("Confirm & Send", role: .destructive) {
-                    viewModel.confirmProtectedExecution()
-                }
-                Button("Cancel", role: .cancel) {
-                    viewModel.dismissProtectedWarning()
-                }
-            } message: {
-                Text("You are about to execute a \(viewModel.method) request against the protected '\(viewModel.activeEnvironment?.name ?? "")' environment. This action may modify live production data.")
-            }
-            .sheet(isPresented: $showingQRScanner) {
-                if #available(iOS 16.0, *) {
-                    QRScannerView(scannedCode: Binding(
-                        get: { nil },
-                        set: { newUrl in
-                            if let newUrl = newUrl {
-                                viewModel.url = newUrl
-                                viewModel.method = "GET"
-                            }
-                        }
-                    ))
-                }
-            }
-            }
-        }
-    }
-
-    private func methodColor(for method: String) -> Color {
-        switch method.uppercased() {
-        case "GET": return .green
-        case "POST": return .blue
-        case "PUT": return .orange
-        case "DELETE": return .red
-        case "PATCH": return .purple
-        default: return .secondary
         }
     }
 }

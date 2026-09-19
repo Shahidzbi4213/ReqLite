@@ -15,6 +15,7 @@
 		2152FB132600AC8F00CF470E /* ResponseStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB232600AC8F00CF470E /* ResponseStateView.swift */; };
 		2152FB142600AC8F00CF470E /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB242600AC8F00CF470E /* WorkspaceView.swift */; };
 		2152FB152600AC8F00CF470E /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB252600AC8F00CF470E /* QRScannerView.swift */; };
+		2152FB162600AC8F00CF470E /* ReqDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB262600AC8F00CF470E /* ReqDesignSystem.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,7 @@
 		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AB3632DC29227652001CCB65 /* Config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 		2152FB252600AC8F00CF470E /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		2152FB262600AC8F00CF470E /* ReqDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReqDesignSystem.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +88,7 @@
 				2152FB232600AC8F00CF470E /* ResponseStateView.swift */,
 				2152FB242600AC8F00CF470E /* WorkspaceView.swift */,
 				2152FB252600AC8F00CF470E /* QRScannerView.swift */,
+				2152FB262600AC8F00CF470E /* ReqDesignSystem.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -202,6 +205,7 @@
 				2152FB132600AC8F00CF470E /* ResponseStateView.swift in Sources */,
 				2152FB142600AC8F00CF470E /* WorkspaceView.swift in Sources */,
 				2152FB152600AC8F00CF470E /* QRScannerView.swift in Sources */,
+				2152FB162600AC8F00CF470E /* ReqDesignSystem.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

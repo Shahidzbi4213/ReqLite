@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
 import com.learn.reqlite.ui.environment.EnvironmentSelector
@@ -22,6 +23,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Add
 
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -50,6 +57,10 @@ fun WorkspaceScreen(
     val activeEnvironment by viewModel.activeEnvironment.collectAsState()
     val isProtectedWarningVisible by viewModel.isProtectedWarningVisible.collectAsState()
     val pendingExecution by viewModel.pendingExecution.collectAsState()
+
+    val openDrafts by viewModel.openDrafts.collectAsState()
+    val activeDraftId by viewModel.activeDraftId.collectAsState()
+    var showTabsSheet by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val qrScannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -81,11 +92,14 @@ fun WorkspaceScreen(
         topBar = {
             WorkspaceTopBar(
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = { viewModel.saveDraft(); onNavigateBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showTabsSheet = true }) {
+                         Icon(androidx.compose.material.icons.Icons.Default.Menu, contentDescription = "Open Tabs")
+                    }
                     IconButton(onClick = {
                         val options = ScanOptions()
                         options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -96,34 +110,6 @@ fun WorkspaceScreen(
                         qrScannerLauncher.launch(options)
                     }) {
                         Icon(Icons.Default.Add, contentDescription = "Scan QR Code")
-                    }
-                }
-            )
-        },
-        bottomBar = {
-            BottomAppBar(
-                actions = { },
-                floatingActionButton = {
-                    FloatingActionButton(
-                        onClick = {
-                            if (executionState is ExecutionUiState.Loading) {
-                                viewModel.cancelExecution()
-                            } else {
-                                viewModel.onSendClicked()
-                            }
-                        },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        elevation = FloatingActionButtonDefaults.bottomAppBarFabElevation()
-                    ) {
-                        if (executionState is ExecutionUiState.Loading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
-                        }
                     }
                 }
             )
@@ -160,9 +146,14 @@ fun WorkspaceScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .padding(8.dp)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.BottomCenter
                     ) {
-                        ExecutionStatePanel(state = executionState)
+                        ExecutionStatePanel(
+                            state = executionState,
+                            onSendClicked = { viewModel.onSendClicked() },
+                            onCancelClicked = { viewModel.cancelExecution() }
+                        )
                     }
                 }
             } else {
@@ -189,10 +180,14 @@ fun WorkspaceScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1.2f)
-                            .padding(8.dp)
+                            .wrapContentHeight()
+                            .padding(16.dp)
                     ) {
-                        ExecutionStatePanel(state = executionState)
+                        ExecutionStatePanel(
+                            state = executionState,
+                            onSendClicked = { viewModel.onSendClicked() },
+                            onCancelClicked = { viewModel.cancelExecution() }
+                        )
                     }
                 }
             }
@@ -209,5 +204,59 @@ fun WorkspaceScreen(
             onConfirm = { viewModel.confirmProtectedExecution() },
             onDismiss = { viewModel.dismissProtectedWarning() }
         )
+    }
+    
+    // Tabs Bottom Sheet
+    if (showTabsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showTabsSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "Open Requests (${openDrafts.size})",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                LazyColumn {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("Create New Request", color = MaterialTheme.colorScheme.primary) },
+                            leadingContent = {
+                                Icon(Icons.Default.Add, contentDescription = "New", tint = MaterialTheme.colorScheme.primary)
+                            },
+                            modifier = Modifier.clickable {
+                                viewModel.createNewTab()
+                                showTabsSheet = false
+                            }
+                        )
+                        HorizontalDivider()
+                    }
+                    items(openDrafts) { draft ->
+                        val isActive = draft.id == activeDraftId
+                        ListItem(
+                            headlineContent = { Text(draft.url.ifBlank { "Untitled Request" }) },
+                            supportingContent = { Text(draft.method.name) },
+                            leadingContent = {
+                                if (isActive) {
+                                    Icon(Icons.Default.Check, contentDescription = "Active")
+                                }
+                            },
+                            modifier = Modifier.clickable {
+                                viewModel.switchTab(draft.id)
+                                showTabsSheet = false
+                            },
+                            colors = ListItemDefaults.colors(
+                                containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
 }

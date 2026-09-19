@@ -6,6 +6,8 @@ struct EnvironmentBadgeView: View {
     let environments: [ReqLiteEnvironment]
     let onSelect: (ReqLiteEnvironment?) -> Void
 
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme: ColorScheme
+
     var isProtected: Bool {
         guard let env = activeEnvironment else { return false }
         let lower = env.name.lowercased()
@@ -36,47 +38,52 @@ struct EnvironmentBadgeView: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: ReqTokens.Spacing.xs) {
                 if let env = activeEnvironment {
                     if isProtected {
                         Image(systemName: "shield.fill")
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.orange)
                         Text(env.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.orange)
-                        Text("PROTECTED")
-                            .font(.system(size: 9, weight: .bold))
+                        Text("PROD")
+                            .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.2))
-                            .cornerRadius(4)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                Capsule()
+                                    .fill(Color.orange.opacity(colorScheme == .dark ? 0.35 : 0.18))
+                            )
                             .foregroundColor(.orange)
                     } else {
                         Image(systemName: "globe")
-                            .foregroundColor(.blue)
+                            .font(.system(size: 12))
+                            .foregroundColor(.accentColor)
                         Text(env.name)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.primary)
                         Text("(\(env.variables.count))")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
                 } else {
                     Image(systemName: "slash.circle")
+                        .font(.system(size: 12))
                         .foregroundColor(.secondary)
                     Text("No Environment")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                 }
 
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.8))
+                
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color(UIColor.secondarySystemBackground))
-            .cornerRadius(8)
+            .padding(.horizontal, ReqTokens.Spacing.sm)
+            .frame(height: ReqTokens.Height.compact)
+            .reqGlass(isProtected ? .prominent(tint: .orange) : .quiet, cornerRadius: ReqTokens.Radius.pill)
         }
     }
 }

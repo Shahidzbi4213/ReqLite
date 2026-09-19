@@ -3,6 +3,7 @@ package com.learn.reqlite.ui.workspace
 import com.learn.reqlite.domain.engine.RequestExecutionEngine
 import com.learn.reqlite.domain.model.*
 import com.learn.reqlite.domain.repository.EnvironmentRepository
+import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -19,6 +20,7 @@ class IosWorkspaceAdapterTest {
     private lateinit var fakeEngine: FakeEngine
     private lateinit var fakeEnvRepo: FakeEnvRepo
     private lateinit var fakeReqRepo: FakeReqRepo
+    private lateinit var fakeHistoryRepo: FakeHistoryRepo
     private lateinit var adapter: IosWorkspaceAdapter
 
     @BeforeTest
@@ -26,10 +28,12 @@ class IosWorkspaceAdapterTest {
         fakeEngine = FakeEngine()
         fakeEnvRepo = FakeEnvRepo()
         fakeReqRepo = FakeReqRepo()
+        fakeHistoryRepo = FakeHistoryRepo()
         adapter = IosWorkspaceAdapter(
             executionEngine = fakeEngine,
             environmentRepository = fakeEnvRepo,
             requestRepository = fakeReqRepo,
+            historyRepository = fakeHistoryRepo,
             scope = CoroutineScope(testDispatcher)
         )
     }
@@ -47,10 +51,10 @@ class IosWorkspaceAdapterTest {
         }
 
         assertNotNull(createdDraftId)
-        val savedReq = fakeReqRepo.getRequestById(createdDraftId)
-        assertNotNull(savedReq)
-        assertEquals(HttpMethod.POST, savedReq.method)
-        assertEquals("https://api.example.com/items", savedReq.url)
+        val savedDraft = fakeReqRepo.getDraftById(createdDraftId)
+        assertNotNull(savedDraft)
+        assertEquals(HttpMethod.POST, savedDraft.method)
+        assertEquals("https://api.example.com/items", savedDraft.url)
 
         val states = mutableListOf<IosExecutionState>()
         adapter.executeRequest(
@@ -62,6 +66,17 @@ class IosWorkspaceAdapterTest {
 
         assertTrue(states.any { it is IosExecutionState.Success })
         assertEquals("env_ios_prod", fakeEngine.lastEnvironmentId)
+    }
+
+    @Test
+    fun adapter_observesHistory() = runTest {
+        val observed = mutableListOf<List<HistoryEntry>>()
+        adapter.observeHistory { list ->
+            observed.add(list)
+        }
+
+        assertTrue(observed.isNotEmpty())
+        assertEquals("https://api.example.com/history-item", observed.first().first().requestUrl)
     }
 
     @Test
@@ -117,6 +132,7 @@ class IosWorkspaceAdapterTest {
 
     class FakeReqRepo : RequestRepository {
         private val requests = mutableMapOf<String, Request>()
+        private val drafts = mutableMapOf<String, Draft>()
 
         override suspend fun insertRequest(request: Request) {
             requests[request.id] = request
@@ -125,10 +141,48 @@ class IosWorkspaceAdapterTest {
         override suspend fun getRequestById(id: String): Request? = requests[id]
         override fun getAllRequests(): Flow<List<Request>> = flowOf(requests.values.toList())
         override suspend fun deleteRequest(id: String) { requests.remove(id) }
-        override suspend fun insertDraft(draft: Draft) {}
-        override suspend fun getDraftById(id: String): Draft? = null
+        override suspend fun insertDraft(draft: Draft) { drafts[draft.id] = draft }
+        override suspend fun getDraftById(id: String): Draft? = drafts[id]
         override suspend fun getDraftForRequest(requestId: String): Draft? = null
-        override fun getAllDrafts(): Flow<List<Draft>> = flowOf(emptyList())
-        override suspend fun deleteDraft(id: String) {}
+        override fun getAllDrafts(): Flow<List<Draft>> = flowOf(drafts.values.toList())
+        override suspend fun deleteDraft(id: String) { drafts.remove(id) }
+    }
+
+    class FakeHistoryRepo : HistoryRepository {
+        private val historyEntries = mutableListOf(
+            HistoryEntry(
+                id = "hist_sample_1",
+                requestId = "draft_1",
+                requestMethod = HttpMethod.GET,
+                requestUrl = "https://api.example.com/history-item",
+                statusCode = 200,
+                durationMs = 120L,
+                timestamp = 1000L
+            )
+        )
+
+        override suspend fun insertHistoryEntry(entry: HistoryEntry) {
+            historyEntries.add(entry)
+        }
+
+        override suspend fun insertResponseArtifact(artifact: ResponseArtifact) {}
+
+        override fun getAllHistoryEntries(): Flow<List<HistoryEntry>> = flowOf(historyEntries)
+
+        override fun getHistoryForRequest(requestId: String): Flow<List<HistoryEntry>> =
+            flowOf(historyEntries.filter { it.requestId == requestId })
+
+        override suspend fun getHistoryEntryById(id: String): HistoryEntry? =
+            historyEntries.find { it.id == id }
+
+        override suspend fun getResponseArtifactById(id: String): ResponseArtifact? = null
+
+        override suspend fun deleteHistoryEntry(id: String) {
+            historyEntries.removeAll { it.id == id }
+        }
+
+        override suspend fun clearHistory() {
+            historyEntries.clear()
+        }
     }
 }

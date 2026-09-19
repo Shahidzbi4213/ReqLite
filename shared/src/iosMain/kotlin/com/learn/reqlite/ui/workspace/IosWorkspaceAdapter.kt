@@ -4,6 +4,7 @@ import com.learn.reqlite.di.DiHelper
 import com.learn.reqlite.domain.engine.RequestExecutionEngine
 import com.learn.reqlite.domain.model.*
 import com.learn.reqlite.domain.repository.EnvironmentRepository
+import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
@@ -25,16 +26,19 @@ class IosWorkspaceAdapter(
     private val executionEngine: RequestExecutionEngine,
     private val environmentRepository: EnvironmentRepository,
     private val requestRepository: RequestRepository,
+    private val historyRepository: HistoryRepository,
     private val scope: CoroutineScope
 ) {
     constructor() : this(
         executionEngine = DiHelper.getRequestExecutionEngine(),
         environmentRepository = DiHelper.getEnvironmentRepository(),
         requestRepository = DiHelper.getRequestRepository(),
+        historyRepository = DiHelper.getHistoryRepository(),
         scope = CoroutineScope(Dispatchers.Main)
     )
 
     private var envJob: Job? = null
+    private var historyJob: Job? = null
     private var executionJob: Job? = null
 
     fun observeEnvironments(onEnvironmentsChanged: (List<Environment>) -> Unit) {
@@ -42,6 +46,25 @@ class IosWorkspaceAdapter(
         envJob = environmentRepository.getAllEnvironments()
             .onEach { onEnvironmentsChanged(it) }
             .launchIn(scope)
+    }
+
+    fun observeHistory(onHistoryChanged: (List<HistoryEntry>) -> Unit) {
+        historyJob?.cancel()
+        historyJob = historyRepository.getAllHistoryEntries()
+            .onEach { onHistoryChanged(it) }
+            .launchIn(scope)
+    }
+
+    fun deleteHistoryEntry(id: String) {
+        scope.launch {
+            historyRepository.deleteHistoryEntry(id)
+        }
+    }
+
+    fun clearHistory() {
+        scope.launch {
+            historyRepository.clearHistory()
+        }
     }
 
     fun executeRequest(
@@ -66,10 +89,27 @@ class IosWorkspaceAdapter(
         onStateChanged(IosExecutionState.Idle)
     }
 
-    @OptIn(ExperimentalForeignApi::class)
     fun createQuickDraft(
         methodName: String,
         url: String,
+        onCreated: (String) -> Unit
+    ) {
+        createDraftWithDetails(
+            methodName = methodName,
+            url = url,
+            headers = emptyList(),
+            queryParams = emptyList(),
+            bodyContent = null,
+            onCreated = onCreated
+        )
+    }
+
+    fun createDraftWithDetails(
+        methodName: String,
+        url: String,
+        headers: List<RequestField> = emptyList(),
+        queryParams: List<RequestField> = emptyList(),
+        bodyContent: String? = null,
         onCreated: (String) -> Unit
     ) {
         scope.launch {
@@ -82,15 +122,20 @@ class IosWorkspaceAdapter(
                 "OPTIONS" -> HttpMethod.OPTIONS
                 else -> HttpMethod.GET
             }
+            val requestBody = if (!bodyContent.isNullOrBlank()) {
+                RequestBody.TextBody(bodyContent, "application/json")
+            } else {
+                RequestBody.NoBody
+            }
             val draft = Draft(
-                id = "ios_draft_${time(null)}",
+                id = "ios_draft_${com.learn.reqlite.utils.common.nowMs()}_${(1000..9999).random()}",
                 requestId = null,
                 method = method,
                 url = url,
-                headers = emptyList(),
-                queryParams = emptyList(),
-                body = RequestBody.NoBody,
-                updatedAt = 1000L
+                headers = headers,
+                queryParams = queryParams,
+                body = requestBody,
+                updatedAt = com.learn.reqlite.utils.common.nowMs()
             )
             requestRepository.insertDraft(draft)
             onCreated(draft.id)
@@ -99,6 +144,7 @@ class IosWorkspaceAdapter(
 
     fun close() {
         envJob?.cancel()
+        historyJob?.cancel()
         executionJob?.cancel()
     }
 }

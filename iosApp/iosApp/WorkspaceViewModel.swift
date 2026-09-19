@@ -22,28 +22,51 @@ class WorkspaceViewModel: ObservableObject {
     @Published var selectedTab: RequestTab = .params
     @Published var responseTab: ResponseTab = .pretty
 
-    enum RequestTab: String, CaseIterable, Identifiable {
+    struct KeyValueItem: Identifiable, Equatable {
+        let id = UUID()
+        var key: String
+        var value: String
+        var isEnabled: Bool = true
+    }
+
+    @Published var queryParams: [KeyValueItem] = [
+        KeyValueItem(key: "userId", value: "1")
+    ]
+    @Published var headers: [KeyValueItem] = [
+        KeyValueItem(key: "Accept", value: "application/json")
+    ]
+    @Published var authType: String = "None"
+    @Published var authToken: String = ""
+    @Published var requestBody: String = "{\n  \"title\": \"foo\",\n  \"completed\": false\n}"
+
+    enum RequestTab: String, CaseIterable, Identifiable, CustomStringConvertible {
         case params = "Params"
         case headers = "Headers"
         case auth = "Auth"
         case body = "Body"
         var id: String { rawValue }
+        var description: String { rawValue }
     }
 
-    enum ResponseTab: String, CaseIterable, Identifiable {
+    enum ResponseTab: String, CaseIterable, Identifiable, CustomStringConvertible {
         case pretty = "Pretty"
         case raw = "Raw"
         case headers = "Headers"
         var id: String { rawValue }
+        var description: String { rawValue }
     }
 
     let availableMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+
+    @Published var historyEntries: [HistoryEntry] = []
+    @Published var showingHistorySheet: Bool = false
 
     private var adapter: IosWorkspaceAdapter? = nil
 
     init() {
         self.adapter = IosWorkspaceAdapter()
         observeEnvironments()
+        observeHistory()
     }
 
     deinit {
@@ -59,6 +82,28 @@ class WorkspaceViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func observeHistory() {
+        adapter?.observeHistory { [weak self] entries in
+            Task { @MainActor in
+                self?.historyEntries = entries
+            }
+        }
+    }
+
+    func loadHistoryEntry(_ entry: HistoryEntry) {
+        self.method = entry.requestMethod.name
+        self.url = entry.requestUrl
+        self.showingHistorySheet = false
+    }
+
+    func deleteHistoryEntry(_ id: String) {
+        adapter?.deleteHistoryEntry(id: id)
+    }
+
+    func clearAllHistory() {
+        adapter?.clearHistory()
     }
 
     func selectEnvironment(_ env: ReqLiteEnvironment?) {
@@ -92,7 +137,78 @@ class WorkspaceViewModel: ObservableObject {
         guard let adapter = adapter else { return }
         
         self.executionState = .loading
-        adapter.createQuickDraft(methodName: method, url: url) { [weak self] draftId in
+
+        var compiledHeaders: [RequestField] = []
+        for h in headers where h.isEnabled && !h.key.trimmingCharacters(in: .whitespaces).isEmpty {
+            compiledHeaders.append(
+                RequestField(
+                    id: UUID().uuidString,
+                    key: h.key,
+                    value: h.value,
+                    isEnabled: true,
+                    description: nil
+                )
+            )
+        }
+
+        if authType == "Bearer Token" && !authToken.isEmpty {
+            compiledHeaders.append(
+                RequestField(
+                    id: UUID().uuidString,
+                    key: "Authorization",
+                    value: "Bearer \(authToken)",
+                    isEnabled: true,
+                    description: nil
+                )
+            )
+        } else if authType == "Basic Auth" && !authToken.isEmpty {
+            let base64Auth = Data(authToken.utf8).base64EncodedString()
+            compiledHeaders.append(
+                RequestField(
+                    id: UUID().uuidString,
+                    key: "Authorization",
+                    value: "Basic \(base64Auth)",
+                    isEnabled: true,
+                    description: nil
+                )
+            )
+        } else if authType == "API Key" && !authToken.isEmpty {
+            let parts = authToken.split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2 {
+                compiledHeaders.append(
+                    RequestField(
+                        id: UUID().uuidString,
+                        key: parts[0].trimmingCharacters(in: .whitespaces),
+                        value: parts[1].trimmingCharacters(in: .whitespaces),
+                        isEnabled: true,
+                        description: nil
+                    )
+                )
+            }
+        }
+
+        var compiledParams: [RequestField] = []
+        for p in queryParams where p.isEnabled && !p.key.trimmingCharacters(in: .whitespaces).isEmpty {
+            compiledParams.append(
+                RequestField(
+                    id: UUID().uuidString,
+                    key: p.key,
+                    value: p.value,
+                    isEnabled: true,
+                    description: nil
+                )
+            )
+        }
+
+        let bodyToSend: String? = (method == "POST" || method == "PUT" || method == "PATCH") ? requestBody : nil
+
+        adapter.createDraftWithDetails(
+            methodName: method,
+            url: url,
+            headers: compiledHeaders,
+            queryParams: compiledParams,
+            bodyContent: bodyToSend
+        ) { [weak self] draftId in
             Task { @MainActor in
                 guard let self = self else { return }
                 adapter.executeRequest(
