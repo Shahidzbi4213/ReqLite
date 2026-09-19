@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/android_screenshot.png" height="120" alt="ReqLite Logo" style="border-radius: 24px; display: none;" />
+  <img src="images/logo.png" width="130" height="130" alt="ReqLite Logo" style="border-radius: 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);" />
   <h1 align="center">⚡ ReqLite</h1>
   <p align="center">
     <strong>The Elegant, Local-First REST API Client for Mobile</strong><br>
