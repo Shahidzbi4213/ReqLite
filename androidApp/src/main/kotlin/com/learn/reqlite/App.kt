@@ -33,7 +33,8 @@ object MainListDetailDestination
 @Parcelize
 data class WorkspaceDestination(
     val initialUrl: String? = null,
-    val initialMethod: String = "GET"
+    val initialMethod: String = "GET",
+    val initialDraftId: String? = null
 ) : Parcelable
 
 @Serializable
@@ -56,12 +57,13 @@ fun App() {
                     value = navigator.scaffoldValue,
                     listPane = {
                         HomeScreen(
-                            onNavigateToRequest = { url, method ->
+                            onNavigateToRequest = { url, method, draftId ->
                                 navigator.navigateTo(
                                     ListDetailPaneScaffoldRole.Detail,
                                     WorkspaceDestination(
                                         initialUrl = url,
-                                        initialMethod = method ?: "GET"
+                                        initialMethod = method ?: "GET",
+                                        initialDraftId = draftId
                                     )
                                 )
                             }
@@ -72,6 +74,7 @@ fun App() {
                         WorkspaceScreen(
                             initialUrl = destination?.initialUrl,
                             initialMethod = destination?.initialMethod ?: "GET",
+                            initialDraftId = destination?.initialDraftId,
                             onNavigateBack = {
                                 if (navigator.canNavigateBack()) {
                                     navigator.navigateBack()

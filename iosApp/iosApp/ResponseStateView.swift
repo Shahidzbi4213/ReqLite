@@ -53,7 +53,7 @@ struct ResponseStateView: View {
                 .padding(ReqTokens.Spacing.md)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            case .success(let history, let responseBody):
+            case .success(let history, let responseBody, let responseHeaders):
                 let code = history.statusCode?.intValue ?? 0
                 let duration = history.durationMs?.int64Value ?? 0
 
@@ -113,7 +113,7 @@ struct ResponseStateView: View {
                                         .foregroundColor(.red)
                                         .padding(ReqTokens.Spacing.md)
                                 } else {
-                                    let actualText = responseBody
+                                    let actualText = responseTab == .pretty ? ResponseStateView.prettyJson(responseBody) : responseBody
                                     if isFiltering {
                                         ProgressView()
                                             .padding(ReqTokens.Spacing.md)
@@ -128,6 +128,35 @@ struct ResponseStateView: View {
 
                             case .headers:
                                 VStack(alignment: .leading, spacing: ReqTokens.Spacing.sm) {
+                                    if !responseHeaders.isEmpty {
+                                        Text("Response Headers (\(responseHeaders.count))")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(.primary)
+                                            .padding(.bottom, 2)
+
+                                        ForEach(Array(responseHeaders.keys.sorted()), id: \.self) { key in
+                                            HStack(alignment: .top, spacing: ReqTokens.Spacing.xs) {
+                                                Text(key)
+                                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                                    .foregroundColor(.primary)
+                                                Text(":")
+                                                    .foregroundColor(.secondary)
+                                                Text(responseHeaders[key] ?? "")
+                                                    .font(.system(size: 12, design: .monospaced))
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .textSelection(.enabled)
+                                        }
+
+                                        Divider()
+                                            .padding(.vertical, 4)
+                                    }
+
+                                    Text("Request Info")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.primary)
+                                        .padding(.bottom, 2)
+
                                     HStack(alignment: .top, spacing: ReqTokens.Spacing.xs) {
                                         Text("Request ID")
                                             .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -238,6 +267,7 @@ struct ResponseStateView: View {
 struct FullScreenResponseView: View {
     let history: HistoryEntry
     let responseBody: String
+    var responseHeaders: [String: String] = [:]
     @Binding var responseTab: WorkspaceViewModel.ResponseTab
 
     @State private var searchQuery: String = ""
@@ -304,7 +334,7 @@ struct FullScreenResponseView: View {
                                 .foregroundColor(.red)
                                 .padding(ReqTokens.Spacing.md)
                         } else {
-                            let actualText = responseBody
+                            let actualText = responseTab == .pretty ? ResponseStateView.prettyJson(responseBody) : responseBody
                             if isFiltering {
                                 ProgressView()
                                     .padding(ReqTokens.Spacing.md)
@@ -319,6 +349,35 @@ struct FullScreenResponseView: View {
 
                     case .headers:
                         VStack(alignment: .leading, spacing: ReqTokens.Spacing.sm) {
+                            if !responseHeaders.isEmpty {
+                                Text("Response Headers (\(responseHeaders.count))")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.primary)
+                                    .padding(.bottom, 2)
+
+                                ForEach(Array(responseHeaders.keys.sorted()), id: \.self) { key in
+                                    HStack(alignment: .top, spacing: ReqTokens.Spacing.xs) {
+                                        Text(key)
+                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.primary)
+                                        Text(":")
+                                            .foregroundColor(.secondary)
+                                        Text(responseHeaders[key] ?? "")
+                                            .font(.system(size: 12, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .textSelection(.enabled)
+                                }
+
+                                Divider()
+                                    .padding(.vertical, 4)
+                            }
+
+                            Text("Request Info")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.primary)
+                                .padding(.bottom, 2)
+
                             HStack(alignment: .top, spacing: ReqTokens.Spacing.xs) {
                                 Text("Request ID")
                                     .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -391,5 +450,17 @@ struct FullScreenResponseView: View {
         case 500: return "Internal Server Error"
         default: return ""
         }
+    }
+}
+
+extension ResponseStateView {
+    static func prettyJson(_ raw: String) -> String {
+        guard let data = raw.data(using: .utf8),
+              let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+              let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys]),
+              let prettyString = String(data: prettyData, encoding: .utf8) else {
+            return raw
+        }
+        return prettyString
     }
 }

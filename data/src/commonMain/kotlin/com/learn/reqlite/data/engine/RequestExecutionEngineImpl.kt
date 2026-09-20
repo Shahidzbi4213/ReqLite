@@ -1,6 +1,7 @@
 package com.learn.reqlite.data.engine
 
 import com.learn.reqlite.domain.engine.RequestExecutionEngine
+import com.learn.reqlite.domain.engine.RequestExecutionResult
 import com.learn.reqlite.domain.model.HistoryEntry
 import com.learn.reqlite.domain.repository.EnvironmentRepository
 import com.learn.reqlite.domain.repository.HistoryRepository
@@ -30,6 +31,11 @@ class RequestExecutionEngineImpl(
 ) : RequestExecutionEngine {
     
     override suspend fun execute(draftId: String, environmentId: String?): Pair<HistoryEntry, String> {
+        val result = executeWithHeaders(draftId, environmentId)
+        return Pair(result.historyEntry, result.responseBody)
+    }
+
+    override suspend fun executeWithHeaders(draftId: String, environmentId: String?): RequestExecutionResult {
         val draft = requestRepository.getDraftById(draftId) ?: throw IllegalArgumentException("Draft not found")
         
         val env = environmentId?.let { environmentRepository.getEnvironmentById(it) }
@@ -66,6 +72,7 @@ class RequestExecutionEngineImpl(
         var responseArtifactId: String? = null
         var responseBody: String = ""
         var durationMs: Long? = null
+        var capturedHeaders: Map<String, String> = emptyMap()
         
         try {
             val statement = httpClient.request(urlString) {
@@ -96,6 +103,7 @@ class RequestExecutionEngineImpl(
             responseBody = statement.bodyAsText()
             statusCode = statement.status.value
             durationMs = nowMs() - startTime
+            capturedHeaders = statement.headers.entries().associate { it.key to it.value.joinToString(", ") }
             
             val artifact = ResponseArtifact(
                 id = "art_${nowMs()}",
@@ -116,7 +124,7 @@ class RequestExecutionEngineImpl(
                 errorMessage = mapped.message
             )
             historyRepository.insertHistoryEntry(failedEntry)
-            return Pair(failedEntry, "")
+            return RequestExecutionResult(failedEntry, "", emptyMap())
         }
         
         val finalEntry = pendingEntry.copy(
@@ -125,6 +133,6 @@ class RequestExecutionEngineImpl(
             responseArtifactId = responseArtifactId
         )
         historyRepository.insertHistoryEntry(finalEntry)
-        return Pair(finalEntry, responseBody)
+        return RequestExecutionResult(finalEntry, responseBody, capturedHeaders)
     }
 }

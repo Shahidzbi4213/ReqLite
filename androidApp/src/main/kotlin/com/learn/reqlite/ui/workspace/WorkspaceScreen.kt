@@ -33,13 +33,16 @@ import androidx.compose.material.icons.filled.Add
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import android.widget.Toast
-
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalClipboardManager
+import com.learn.reqlite.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkspaceScreen(
     initialUrl: String? = null,
     initialMethod: String = "GET",
+    initialDraftId: String? = null,
     onNavigateBack: () -> Unit = {},
     onNavigateToResponse: (String) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -61,19 +64,30 @@ fun WorkspaceScreen(
     val openDrafts by viewModel.openDrafts.collectAsState()
     val activeDraftId by viewModel.activeDraftId.collectAsState()
     var showTabsSheet by remember { mutableStateOf(false) }
+    var showCurlDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val qrScannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         if (result.contents != null) {
-            viewModel.setUrl(result.contents)
-            viewModel.setMethod("GET")
+            val handled = viewModel.applySmartPayload(result.contents)
+            if (!handled) {
+                viewModel.setUrl(result.contents)
+                viewModel.setMethod("GET")
+            }
+            Toast.makeText(context, "Scanned & applied successfully", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(context, "Scan cancelled", Toast.LENGTH_SHORT).show()
         }
     }
 
+    LaunchedEffect(initialDraftId) {
+        if (!initialDraftId.isNullOrBlank()) {
+            viewModel.loadDraft(initialDraftId)
+        }
+    }
+
     LaunchedEffect(initialUrl, initialMethod) {
-        if (!initialUrl.isNullOrBlank()) {
+        if (initialDraftId.isNullOrBlank() && !initialUrl.isNullOrBlank()) {
             viewModel.setUrl(initialUrl)
             viewModel.setMethod(initialMethod)
         }
@@ -100,6 +114,13 @@ fun WorkspaceScreen(
                     IconButton(onClick = { showTabsSheet = true }) {
                          Icon(androidx.compose.material.icons.Icons.Default.Menu, contentDescription = "Open Tabs")
                     }
+                    IconButton(onClick = { showCurlDialog = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_terminal),
+                            contentDescription = "Paste cURL",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     IconButton(onClick = {
                         val options = ScanOptions()
                         options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -109,7 +130,11 @@ fun WorkspaceScreen(
                         options.setBarcodeImageEnabled(true)
                         qrScannerLauncher.launch(options)
                     }) {
-                        Icon(Icons.Default.Add, contentDescription = "Scan QR Code")
+                        Icon(
+                            painter = painterResource(R.drawable.ic_qr_code_scanner),
+                            contentDescription = "Scan QR Code",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             )
@@ -258,5 +283,72 @@ fun WorkspaceScreen(
                 }
             }
         }
+    }
+
+    if (showCurlDialog) {
+        var curlInput by remember { mutableStateOf("") }
+        val clipboardManager = LocalClipboardManager.current
+        
+        AlertDialog(
+            onDismissRequest = { showCurlDialog = false },
+            title = { Text("Import cURL Command") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Paste a cURL command to import URL, method, headers, auth token, and request body.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = curlInput,
+                        onValueChange = { curlInput = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        placeholder = { Text("curl -X POST https://api.example.com ...") },
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        TextButton(onClick = {
+                            val clipText = clipboardManager.getText()?.text
+                            if (!clipText.isNullOrBlank()) {
+                                curlInput = clipText
+                            }
+                        }) {
+                            Text("Paste Clipboard")
+                        }
+                        if (curlInput.isNotBlank()) {
+                            TextButton(onClick = { curlInput = "" }) {
+                                Text("Clear")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val success = viewModel.applyCurl(curlInput)
+                        if (success) {
+                            Toast.makeText(context, "cURL imported successfully", Toast.LENGTH_SHORT).show()
+                            showCurlDialog = false
+                        } else {
+                            Toast.makeText(context, "Failed to parse cURL command", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = curlInput.isNotBlank()
+                ) {
+                    Text("Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCurlDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

@@ -7,7 +7,7 @@ public typealias ReqLiteEnvironment = Shared.Environment
 enum ExecutionState {
     case idle
     case loading
-    case success(HistoryEntry, String)
+    case success(HistoryEntry, String, [String: String])
     case error(String)
 }
 
@@ -219,7 +219,7 @@ class WorkspaceViewModel: ObservableObject {
                         if state is IosExecutionState.Loading {
                             self.executionState = .loading
                         } else if let success = state as? IosExecutionState.Success {
-                            self.executionState = .success(success.result, success.responseBody)
+                            self.executionState = .success(success.result, success.responseBody, success.responseHeaders)
                         } else if let err = state as? IosExecutionState.Error {
                             self.executionState = .error(err.message)
                         } else {
@@ -229,6 +229,54 @@ class WorkspaceViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    @discardableResult
+    func applySmartPayload(_ input: String) -> Bool {
+        guard let adapter = adapter else { return false }
+        let result = adapter.parseSmartPayload(rawInput: input)
+        
+        switch result.type {
+        case "config":
+            self.url = result.url
+            self.method = result.method
+            if !result.queryParams.isEmpty {
+                self.queryParams = result.queryParams.map { KeyValueItem(key: $0.key, value: $0.value, isEnabled: $0.isEnabled) }
+            }
+            if !result.headers.isEmpty {
+                self.headers = result.headers.map { KeyValueItem(key: $0.key, value: $0.value, isEnabled: $0.isEnabled) }
+            }
+            if let body = result.bodyContent {
+                self.requestBody = body
+                self.selectedTab = .body
+            }
+            if let token = result.bearerToken {
+                self.authType = "Bearer Token"
+                self.authToken = token
+            }
+            return true
+            
+        case "auth":
+            if let token = result.bearerToken {
+                self.authType = "Bearer Token"
+                self.authToken = token
+                self.selectedTab = .auth
+                return true
+            }
+            return false
+            
+        case "url":
+            self.url = result.url
+            return true
+            
+        default:
+            return false
+        }
+    }
+
+    @discardableResult
+    func applyCurl(_ curlCommand: String) -> Bool {
+        return applySmartPayload(curlCommand)
     }
 
     func cancelExecution() {

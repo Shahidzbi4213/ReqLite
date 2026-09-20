@@ -439,6 +439,38 @@ class WorkspaceViewModel(
         saveDraft(newDraftId)
     }
 
+    fun applySmartPayload(rawInput: String): Boolean {
+        val parser = com.learn.reqlite.domain.parser.SmartPayloadParser()
+        return when (val parsed = parser.parse(rawInput)) {
+            is com.learn.reqlite.domain.parser.SmartPayload.RequestConfig -> {
+                _url.value = parsed.url
+                _method.value = parsed.method.name
+                _headers.value = parsed.headers
+                _queryParams.value = parsed.queryParams
+                _body.value = parsed.body
+                val token = parsed.bearerToken
+                if (token != null) {
+                    _authConfiguration.value = AuthConfiguration.Bearer(token)
+                }
+                saveDraft()
+                true
+            }
+            is com.learn.reqlite.domain.parser.SmartPayload.AuthToken -> {
+                _authConfiguration.value = AuthConfiguration.Bearer(parsed.token)
+                true
+            }
+            is com.learn.reqlite.domain.parser.SmartPayload.PlainUrl -> {
+                _url.value = parsed.url
+                true
+            }
+            is com.learn.reqlite.domain.parser.SmartPayload.Error -> {
+                false
+            }
+        }
+    }
+
+    fun applyCurl(curlCommand: String): Boolean = applySmartPayload(curlCommand)
+
     private fun parseHttpMethod(name: String): com.learn.reqlite.domain.model.HttpMethod {
         return when (name.uppercase()) {
             "POST" -> com.learn.reqlite.domain.model.HttpMethod.POST

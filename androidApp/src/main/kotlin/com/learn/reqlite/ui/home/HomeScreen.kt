@@ -33,7 +33,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onNavigateToRequest: (url: String?, method: String?) -> Unit,
+    onNavigateToRequest: (url: String?, method: String?, draftId: String?) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = koinViewModel()
 ) {
@@ -44,6 +44,11 @@ fun HomeScreen(
         recentRequests = recentRequests,
         drafts = drafts,
         onNavigateToRequest = onNavigateToRequest,
+        onImportCurl = { cmd ->
+            viewModel.importCurl(cmd) { draftId ->
+                onNavigateToRequest(null, null, draftId)
+            }
+        },
         modifier = modifier
     )
 }
@@ -53,7 +58,8 @@ fun HomeScreen(
 fun HomeScreenContent(
     recentRequests: List<HistoryEntry>,
     drafts: List<Draft>,
-    onNavigateToRequest: (url: String?, method: String?) -> Unit,
+    onNavigateToRequest: (url: String?, method: String?, draftId: String?) -> Unit,
+    onImportCurl: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var quickUrl by remember { mutableStateOf("") }
@@ -77,7 +83,7 @@ fun HomeScreenContent(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = { onNavigateToRequest(null, "GET") },
+                onClick = { onNavigateToRequest(null, "GET", null) },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text(stringResource(R.string.new_request), fontWeight = FontWeight.SemiBold) },
                 shape = PillShape,
@@ -99,7 +105,7 @@ fun HomeScreenContent(
                 QuickRequestSection(
                     url = quickUrl,
                     onUrlChange = { quickUrl = it },
-                    onSubmit = { onNavigateToRequest(quickUrl, "GET") }
+                    onSubmit = { onNavigateToRequest(quickUrl, "GET", null) }
                 )
             }
 
@@ -108,12 +114,7 @@ fun HomeScreenContent(
                     curl = curlCommand,
                     onCurlChange = { curlCommand = it },
                     onSubmit = {
-                        val result = CurlParserImpl().parse(curlCommand)
-                        if (result is CurlParseResult.Success) {
-                            onNavigateToRequest(result.draft.url, result.draft.method.name)
-                        } else {
-                            onNavigateToRequest(curlCommand.trim(), "GET")
-                        }
+                        onImportCurl(curlCommand)
                     }
                 )
             }
@@ -139,7 +140,7 @@ fun HomeScreenContent(
                         url = recent.requestUrl,
                         statusCode = recent.statusCode,
                         durationMs = recent.durationMs,
-                        onClick = { onNavigateToRequest(recent.requestUrl, recent.requestMethod.name) }
+                        onClick = { onNavigateToRequest(recent.requestUrl, recent.requestMethod.name, null) }
                     )
                     Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
                 }
@@ -164,7 +165,7 @@ fun HomeScreenContent(
                     RequestCard(
                         method = draft.method.name,
                         url = draft.url,
-                        onClick = { onNavigateToRequest(draft.url, draft.method.name) }
+                        onClick = { onNavigateToRequest(draft.url, draft.method.name, draft.id) }
                     )
                     Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
                 }

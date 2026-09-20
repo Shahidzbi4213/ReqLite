@@ -6,6 +6,8 @@ import com.learn.reqlite.domain.model.*
 import com.learn.reqlite.domain.repository.EnvironmentRepository
 import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
+import com.learn.reqlite.domain.parser.SmartPayload
+import com.learn.reqlite.domain.parser.SmartPayloadParser
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,10 +17,25 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import platform.posix.time
 
+data class IosSmartPayloadResult(
+    val type: String, // "config", "auth", "url", "error"
+    val url: String = "",
+    val method: String = "GET",
+    val headers: List<RequestField> = emptyList(),
+    val queryParams: List<RequestField> = emptyList(),
+    val bodyContent: String? = null,
+    val bearerToken: String? = null,
+    val errorMessage: String? = null
+)
+
 sealed class IosExecutionState {
     object Idle : IosExecutionState()
     object Loading : IosExecutionState()
-    data class Success(val result: HistoryEntry, val responseBody: String) : IosExecutionState()
+    data class Success(
+        val result: HistoryEntry,
+        val responseBody: String,
+        val responseHeaders: Map<String, String> = emptyMap()
+    ) : IosExecutionState()
     data class Error(val message: String) : IosExecutionState()
 }
 
@@ -76,13 +93,55 @@ class IosWorkspaceAdapter(
         executionJob = scope.launch {
             onStateChanged(IosExecutionState.Loading)
             try {
-                val resultPair = executionEngine.execute(draftId, environmentId)
-                onStateChanged(IosExecutionState.Success(resultPair.first, resultPair.second))
+                val result = executionEngine.executeWithHeaders(draftId, environmentId)
+                onStateChanged(IosExecutionState.Success(result.historyEntry, result.responseBody, result.responseHeaders))
             } catch (e: Exception) {
                 onStateChanged(IosExecutionState.Error(e.message ?: "Execution failed"))
             }
         }
     }
+
+    fun parseSmartPayload(rawInput: String): IosSmartPayloadResult {
+        val parser = SmartPayloadParser()
+        return when (val parsed = parser.parse(rawInput)) {
+            is SmartPayload.RequestConfig -> {
+                val bodyText = when (val b = parsed.body) {
+                    is RequestBody.TextBody -> b.content
+                    is RequestBody.UrlEncodedBody -> b.fields.filter { it.isEnabled }.joinToString("&") { "${it.key}=${it.value}" }
+                    else -> null
+                }
+                IosSmartPayloadResult(
+                    type = "config",
+                    url = parsed.url,
+                    method = parsed.method.name,
+                    headers = parsed.headers,
+                    queryParams = parsed.queryParams,
+                    bodyContent = bodyText,
+                    bearerToken = parsed.bearerToken
+                )
+            }
+            is SmartPayload.AuthToken -> {
+                IosSmartPayloadResult(
+                    type = "auth",
+                    bearerToken = parsed.token
+                )
+            }
+            is SmartPayload.PlainUrl -> {
+                IosSmartPayloadResult(
+                    type = "url",
+                    url = parsed.url
+                )
+            }
+            is SmartPayload.Error -> {
+                IosSmartPayloadResult(
+                    type = "error",
+                    errorMessage = parsed.message
+                )
+            }
+        }
+    }
+
+    fun parseCurl(curlCommand: String): IosSmartPayloadResult = parseSmartPayload(curlCommand)
 
     fun cancelExecution(onStateChanged: (IosExecutionState) -> Unit) {
         executionJob?.cancel()

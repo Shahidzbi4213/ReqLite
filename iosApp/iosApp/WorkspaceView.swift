@@ -4,6 +4,7 @@ import Shared
 struct WorkspaceView: View {
     @StateObject private var viewModel = WorkspaceViewModel()
     @State private var showingQRScanner = false
+    @State private var showingCurlSheet = false
     @State private var selectedItem: String? = "workspace"
 
     var body: some View {
@@ -174,6 +175,9 @@ struct WorkspaceView: View {
                         onQRScan: {
                             showingQRScanner = true
                         },
+                        onPasteCurl: {
+                            showingCurlSheet = true
+                        },
                         onSend: {
                             viewModel.onSendClicked()
                         },
@@ -195,10 +199,11 @@ struct WorkspaceView: View {
                         }
                     }
                 )) {
-                    if case .success(let history, let responseBody) = viewModel.executionState {
+                    if case .success(let history, let responseBody, let responseHeaders) = viewModel.executionState {
                         FullScreenResponseView(
                             history: history,
                             responseBody: responseBody,
+                            responseHeaders: responseHeaders,
                             responseTab: $viewModel.responseTab
                         )
                     }
@@ -217,13 +222,17 @@ struct WorkspaceView: View {
                     if #available(iOS 16.0, *) {
                         QRScannerView(scannedCode: Binding(
                             get: { nil },
-                            set: { newUrl in
-                                if let newUrl = newUrl {
-                                    viewModel.url = newUrl
-                                    viewModel.method = "GET"
+                            set: { scannedCode in
+                                if let code = scannedCode {
+                                    viewModel.applySmartPayload(code)
                                 }
                             }
                         ))
+                    }
+                }
+                .sheet(isPresented: $showingCurlSheet) {
+                    ReqPasteCurlSheet(isPresented: $showingCurlSheet) { curl in
+                        viewModel.applyCurl(curl)
                     }
                 }
                 .sheet(isPresented: $viewModel.showingHistorySheet) {
@@ -242,5 +251,80 @@ struct WorkspaceView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Paste cURL Sheet
+struct ReqPasteCurlSheet: View {
+    @Binding var isPresented: Bool
+    let onImport: (String) -> Void
+    @State private var curlText: String = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: ReqTokens.Spacing.sm) {
+                Text("Paste a raw cURL command to automatically populate the URL, method, headers, auth token, and request body.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, ReqTokens.Spacing.md)
+                    .padding(.top, ReqTokens.Spacing.sm)
+
+                TextEditor(text: $curlText)
+                    .font(.system(size: 13, design: .monospaced))
+                    .padding(ReqTokens.Spacing.xs)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+                    .padding(.horizontal, ReqTokens.Spacing.md)
+                    .frame(minHeight: 200)
+
+                HStack {
+                    Button(action: {
+                        if let clip = UIPasteboard.general.string {
+                            curlText = clip
+                        }
+                    }) {
+                        Label("Paste Clipboard", systemImage: "doc.on.clipboard")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    if !curlText.isEmpty {
+                        Button("Clear") {
+                            curlText = ""
+                        }
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, ReqTokens.Spacing.md)
+
+                Spacer()
+            }
+            .navigationTitle("Import cURL")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Import") {
+                        onImport(curlText)
+                        isPresented = false
+                    }
+                    .fontWeight(.bold)
+                    .disabled(curlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onAppear {
+                if let clip = UIPasteboard.general.string, clip.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("curl") {
+                    curlText = clip
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

@@ -121,6 +121,7 @@ class HomeViewModelTest {
         override fun getAllHistoryEntries(): Flow<List<HistoryEntry>> = entries.asStateFlow()
         override fun getHistoryForRequest(requestId: String): Flow<List<HistoryEntry>> = entries.asStateFlow()
         override suspend fun getResponseArtifactById(id: String): ResponseArtifact? = null
+        override suspend fun getHistoryEntryById(id: String): HistoryEntry? = entries.value.find { it.id == id }
         override suspend fun deleteHistoryEntry(id: String) {
             entries.value = entries.value.filter { it.id != id }
         }

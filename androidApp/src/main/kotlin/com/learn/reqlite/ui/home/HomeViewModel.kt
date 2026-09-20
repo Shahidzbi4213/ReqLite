@@ -49,4 +49,24 @@ class HomeViewModel(
             requestRepository.deleteDraft(id)
         }
     }
+
+    fun importCurl(curlCommand: String, onComplete: (draftId: String) -> Unit) {
+        viewModelScope.launch {
+            val parser = com.learn.reqlite.domain.parser.CurlParserImpl()
+            val result = parser.parse(curlCommand)
+            if (result is com.learn.reqlite.domain.parser.CurlParseResult.Success) {
+                requestRepository.insertDraft(result.draft)
+                onComplete(result.draft.id)
+            } else {
+                val fallbackDraft = Draft(
+                    id = "draft_${com.learn.reqlite.utils.common.nowMs()}",
+                    url = curlCommand.trim(),
+                    method = com.learn.reqlite.domain.model.HttpMethod.GET,
+                    updatedAt = com.learn.reqlite.utils.common.nowMs()
+                )
+                requestRepository.insertDraft(fallbackDraft)
+                onComplete(fallbackDraft.id)
+            }
+        }
+    }
 }
