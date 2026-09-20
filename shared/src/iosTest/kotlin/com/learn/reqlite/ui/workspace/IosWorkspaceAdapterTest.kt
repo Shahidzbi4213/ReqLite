@@ -21,6 +21,7 @@ class IosWorkspaceAdapterTest {
     private lateinit var fakeEnvRepo: FakeEnvRepo
     private lateinit var fakeReqRepo: FakeReqRepo
     private lateinit var fakeHistoryRepo: FakeHistoryRepo
+    private lateinit var fakeColRepo: FakeColRepo
     private lateinit var adapter: IosWorkspaceAdapter
 
     @BeforeTest
@@ -29,11 +30,13 @@ class IosWorkspaceAdapterTest {
         fakeEnvRepo = FakeEnvRepo()
         fakeReqRepo = FakeReqRepo()
         fakeHistoryRepo = FakeHistoryRepo()
+        fakeColRepo = FakeColRepo()
         adapter = IosWorkspaceAdapter(
             executionEngine = fakeEngine,
             environmentRepository = fakeEnvRepo,
             requestRepository = fakeReqRepo,
             historyRepository = fakeHistoryRepo,
+            collectionRepository = fakeColRepo,
             scope = CoroutineScope(testDispatcher)
         )
     }
@@ -41,6 +44,35 @@ class IosWorkspaceAdapterTest {
     @AfterTest
     fun tearDown() {
         adapter.close()
+    }
+
+    @Test
+    fun adapter_managesCollections_and_savesRequests() = runTest {
+        var createdCollection: Collection? = null
+        adapter.createCollection(name = "Test API", description = "My test collection") { col ->
+            createdCollection = col
+        }
+
+        assertNotNull(createdCollection)
+        assertEquals("Test API", createdCollection.name)
+
+        var savedRequest: Request? = null
+        adapter.saveRequestToCollection(
+            collectionId = createdCollection.id,
+            name = "Get Users",
+            methodName = "GET",
+            url = "https://api.example.com/users"
+        ) { req ->
+            savedRequest = req
+        }
+
+        assertNotNull(savedRequest)
+        assertEquals("Get Users", savedRequest.name)
+        assertEquals(createdCollection.id, savedRequest.collectionId)
+        assertEquals(HttpMethod.GET, savedRequest.method)
+
+        val retrievedReq = fakeReqRepo.getRequestById(savedRequest.id)
+        assertNotNull(retrievedReq)
     }
 
     @Test
@@ -184,5 +216,25 @@ class IosWorkspaceAdapterTest {
         override suspend fun clearHistory() {
             historyEntries.clear()
         }
+    }
+
+    class FakeColRepo : com.learn.reqlite.domain.repository.CollectionRepository {
+        private val collections = mutableMapOf<String, Collection>()
+
+        override suspend fun insertCollection(collection: Collection) {
+            collections[collection.id] = collection
+        }
+
+        override suspend fun updateCollection(collection: Collection) {
+            collections[collection.id] = collection
+        }
+
+        override suspend fun deleteCollection(collection: Collection) {
+            collections.remove(collection.id)
+        }
+
+        override fun getAllCollections(): Flow<List<Collection>> = flowOf(collections.values.toList())
+
+        override suspend fun getCollectionById(id: String): Collection? = collections[id]
     }
 }

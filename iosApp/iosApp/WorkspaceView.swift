@@ -5,6 +5,7 @@ struct WorkspaceView: View {
     @StateObject private var viewModel = WorkspaceViewModel()
     @State private var showingQRScanner = false
     @State private var showingCurlSheet = false
+    @State private var newCollectionName = ""
     @State private var selectedItem: String? = "workspace"
 
     var body: some View {
@@ -37,12 +38,101 @@ struct WorkspaceView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.vertical, ReqTokens.Spacing.xxs)
+                }
 
-                    HStack {
-                        Label("Collections", systemImage: "folder")
+                Section("Collections") {
+                    if viewModel.collections.isEmpty {
+                        Text("No collections yet")
+                            .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Spacer()
+                            .padding(.vertical, ReqTokens.Spacing.xxs)
+                    } else {
+                        ForEach(viewModel.collections, id: \.id) { collection in
+                            DisclosureGroup(
+                                isExpanded: Binding(
+                                    get: { viewModel.expandedCollectionIds.contains(collection.id) },
+                                    set: { isExpanded in
+                                        if isExpanded {
+                                            viewModel.expandedCollectionIds.insert(collection.id)
+                                        } else {
+                                            viewModel.expandedCollectionIds.remove(collection.id)
+                                        }
+                                    }
+                                )
+                            ) {
+                                let colRequests = viewModel.requestsForCollection(collection.id)
+                                if colRequests.isEmpty {
+                                    Text("No saved requests")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .padding(.leading, 8)
+                                        .padding(.vertical, 2)
+                                } else {
+                                    ForEach(colRequests, id: \.id) { req in
+                                        Button {
+                                            viewModel.loadSavedRequest(req)
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Text(req.method.name)
+                                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                    .foregroundColor(ReqTokens.MethodColor.color(for: req.method.name))
+                                                    .frame(width: 34, alignment: .leading)
+                                                Text(req.name.isEmpty ? req.url : req.name)
+                                                    .font(.system(size: 12))
+                                                    .lineLimit(1)
+                                                    .truncationMode(.middle)
+                                                Spacer()
+                                            }
+                                            .padding(.vertical, 2)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .contextMenu {
+                                            Button(role: .destructive) {
+                                                viewModel.deleteRequest(req.id)
+                                            } label: {
+                                                Label("Delete Request", systemImage: "trash")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Label(collection.name, systemImage: "folder.fill")
+                                        .font(.system(size: 13, weight: .medium))
+                                    Spacer()
+                                    let count = viewModel.requestsForCollection(collection.id).count
+                                    if count > 0 {
+                                        Text("\(count)")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(Color.secondary.opacity(0.15))
+                                            .clipShape(Capsule())
+                                    }
+                                }
+                            }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    viewModel.deleteCollection(collection.id)
+                                } label: {
+                                    Label("Delete Collection", systemImage: "trash")
+                                }
+                            }
+                        }
                     }
+
+                    Button {
+                        viewModel.showingNewCollectionAlert = true
+                    } label: {
+                        HStack {
+                            Label("New Collection", systemImage: "plus")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color.accentColor)
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
                     .padding(.vertical, ReqTokens.Spacing.xxs)
                 }
 
@@ -157,15 +247,33 @@ struct WorkspaceView: View {
                         .buttonStyle(.plain)
                     }
 
-                    // Environment Badge in navigation bar
+                    // Environment & Save in navigation bar
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        EnvironmentBadgeView(
-                            activeEnvironment: viewModel.activeEnvironment,
-                            environments: viewModel.environments,
-                            onSelect: { env in
-                                viewModel.selectEnvironment(env)
+                        HStack(spacing: 8) {
+                            Button {
+                                viewModel.showingSaveCollectionSheet = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "folder.badge.plus")
+                                        .font(.system(size: 13, weight: .semibold))
+                                    Text("Save")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, ReqTokens.Spacing.xs)
+                                .padding(.vertical, 4)
+                                .reqGlass(.quiet, cornerRadius: ReqTokens.Radius.pill)
                             }
-                        )
+                            .buttonStyle(.plain)
+
+                            EnvironmentBadgeView(
+                                activeEnvironment: viewModel.activeEnvironment,
+                                environments: viewModel.environments,
+                                onSelect: { env in
+                                    viewModel.selectEnvironment(env)
+                                }
+                            )
+                        }
                     }
                 }
                 .safeAreaInset(edge: .bottom) {
@@ -249,8 +357,141 @@ struct WorkspaceView: View {
                         }
                     )
                 }
+                .sheet(isPresented: $viewModel.showingSaveCollectionSheet) {
+                    ReqSaveToCollectionSheet(
+                        isPresented: $viewModel.showingSaveCollectionSheet,
+                        collections: viewModel.collections,
+                        initialRequestName: viewModel.url,
+                        onSave: { colId, reqName in
+                            viewModel.saveCurrentRequestToCollection(collectionId: colId, name: reqName)
+                        },
+                        onCreateCollection: { name, completion in
+                            viewModel.createCollection(name: name) { newCol in
+                                completion(newCol.id)
+                            }
+                        }
+                    )
+                }
+                .alert("New Collection", isPresented: $viewModel.showingNewCollectionAlert) {
+                    TextField("Collection Name", text: $newCollectionName)
+                    Button("Create") {
+                        let trimmed = newCollectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            viewModel.createCollection(name: trimmed)
+                            newCollectionName = ""
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {
+                        newCollectionName = ""
+                    }
+                } message: {
+                    Text("Enter a name for your new collection.")
+                }
             }
         }
+    }
+}
+
+// MARK: - Save to Collection Sheet
+struct ReqSaveToCollectionSheet: View {
+    @Binding var isPresented: Bool
+    let collections: [ReqLiteCollection]
+    let initialRequestName: String
+    let onSave: (String, String) -> Void
+    let onCreateCollection: (String, @escaping (String) -> Void) -> Void
+
+    @State private var requestName: String = ""
+    @State private var selectedCollectionId: String = ""
+    @State private var isCreatingNew: Bool = false
+    @State private var newCollectionName: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Request Details") {
+                    TextField("Request Name", text: $requestName)
+                        .font(.system(size: 14))
+                }
+
+                Section("Target Collection") {
+                    if collections.isEmpty || isCreatingNew {
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextField("New Collection Name", text: $newCollectionName)
+                                .font(.system(size: 14))
+
+                            if !collections.isEmpty {
+                                Button("Choose existing collection") {
+                                    isCreatingNew = false
+                                }
+                                .font(.system(size: 12))
+                                .foregroundColor(Color.accentColor)
+                            }
+                        }
+                    } else {
+                        Picker("Collection", selection: $selectedCollectionId) {
+                            ForEach(collections, id: \.id) { col in
+                                Text(col.name).tag(col.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Button {
+                            isCreatingNew = true
+                        } label: {
+                            Label("Create New Collection", systemImage: "plus")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color.accentColor)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Save Request")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let finalName = requestName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? initialRequestName
+                            : requestName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                        if isCreatingNew || collections.isEmpty {
+                            let newName = newCollectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !newName.isEmpty {
+                                onCreateCollection(newName) { newId in
+                                    onSave(newId, finalName)
+                                    isPresented = false
+                                }
+                            }
+                        } else {
+                            if !selectedCollectionId.isEmpty {
+                                onSave(selectedCollectionId, finalName)
+                                isPresented = false
+                            }
+                        }
+                    }
+                    .fontWeight(.bold)
+                    .disabled(
+                        (isCreatingNew || collections.isEmpty)
+                            ? newCollectionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            : selectedCollectionId.isEmpty
+                    )
+                }
+            }
+            .onAppear {
+                requestName = initialRequestName
+                if let first = collections.first {
+                    selectedCollectionId = first.id
+                } else {
+                    isCreatingNew = true
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

@@ -30,6 +30,12 @@ import com.learn.reqlite.ui.theme.PillShape
 import com.learn.reqlite.ui.theme.spacing
 import org.koin.compose.viewmodel.koinViewModel
 
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.res.painterResource
+import com.learn.reqlite.domain.model.Collection
+import com.learn.reqlite.domain.model.Request
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -39,13 +45,31 @@ fun HomeScreen(
 ) {
     val recentRequests by viewModel.recentRequests.collectAsState()
     val drafts by viewModel.drafts.collectAsState()
+    val collections by viewModel.collections.collectAsState()
+    val savedRequests by viewModel.savedRequests.collectAsState()
 
     HomeScreenContent(
         recentRequests = recentRequests,
         drafts = drafts,
+        collections = collections,
+        savedRequests = savedRequests,
         onNavigateToRequest = onNavigateToRequest,
         onImportCurl = { cmd ->
             viewModel.importCurl(cmd) { draftId ->
+                onNavigateToRequest(null, null, draftId)
+            }
+        },
+        onCreateCollection = { name ->
+            viewModel.createCollection(name)
+        },
+        onDeleteCollection = { col ->
+            viewModel.deleteCollection(col)
+        },
+        onDeleteRequest = { id ->
+            viewModel.deleteRequest(id)
+        },
+        onOpenSavedRequest = { req ->
+            viewModel.openSavedRequest(req) { draftId ->
                 onNavigateToRequest(null, null, draftId)
             }
         },
@@ -58,12 +82,21 @@ fun HomeScreen(
 fun HomeScreenContent(
     recentRequests: List<HistoryEntry>,
     drafts: List<Draft>,
+    collections: List<Collection> = emptyList(),
+    savedRequests: List<Request> = emptyList(),
     onNavigateToRequest: (url: String?, method: String?, draftId: String?) -> Unit,
     onImportCurl: (String) -> Unit = {},
+    onCreateCollection: (String) -> Unit = {},
+    onDeleteCollection: (Collection) -> Unit = {},
+    onDeleteRequest: (String) -> Unit = {},
+    onOpenSavedRequest: (Request) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var quickUrl by remember { mutableStateOf("") }
     var curlCommand by remember { mutableStateOf("") }
+    var showCreateCollectionDialog by remember { mutableStateOf(false) }
+    var newCollectionName by remember { mutableStateOf("") }
+    val expandedCollectionIds = remember { mutableStateListOf<String>() }
 
     Scaffold(
         topBar = {
@@ -120,6 +153,61 @@ fun HomeScreenContent(
             }
 
             item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Collections",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    TextButton(
+                        onClick = { showCreateCollectionDialog = true },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("New Collection", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            if (collections.isEmpty()) {
+                item {
+                    EmptyStateCard(message = "No collections yet. Organize your requests into collections.")
+                }
+            } else {
+                items(collections, key = { it.id }) { collection ->
+                    val isExpanded = expandedCollectionIds.contains(collection.id)
+                    val colRequests = savedRequests.filter { it.collectionId == collection.id }
+
+                    CollectionCard(
+                        collection = collection,
+                        requests = colRequests,
+                        isExpanded = isExpanded,
+                        onToggleExpand = {
+                            if (isExpanded) {
+                                expandedCollectionIds.remove(collection.id)
+                            } else {
+                                expandedCollectionIds.add(collection.id)
+                            }
+                        },
+                        onOpenRequest = onOpenSavedRequest,
+                        onDeleteRequest = onDeleteRequest,
+                        onDeleteCollection = { onDeleteCollection(collection) }
+                    )
+                    Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
+                }
+            }
+
+            item {
                 Text(
                     text = stringResource(R.string.recent_requests),
                     style = MaterialTheme.typography.titleMedium,
@@ -170,6 +258,52 @@ fun HomeScreenContent(
                     Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
                 }
             }
+        }
+
+        if (showCreateCollectionDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showCreateCollectionDialog = false
+                    newCollectionName = ""
+                },
+                title = { Text("New Collection", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Enter a name for your API collection:")
+                        OutlinedTextField(
+                            value = newCollectionName,
+                            onValueChange = { newCollectionName = it },
+                            placeholder = { Text("e.g. Users API") },
+                            singleLine = true,
+                            shape = PillShape,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val trimmed = newCollectionName.trim()
+                            if (trimmed.isNotBlank()) {
+                                onCreateCollection(trimmed)
+                                showCreateCollectionDialog = false
+                                newCollectionName = ""
+                            }
+                        },
+                        enabled = newCollectionName.isNotBlank()
+                    ) {
+                        Text("Create")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showCreateCollectionDialog = false
+                        newCollectionName = ""
+                    }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -423,6 +557,150 @@ fun EmptyStateCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+fun CollectionCard(
+    collection: Collection,
+    requests: List<Request>,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onOpenRequest: (Request) -> Unit,
+    onDeleteRequest: (String) -> Unit,
+    onDeleteCollection: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    ElevatedCard(
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(MaterialTheme.spacing.medium)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleExpand() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_folder),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = collection.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    val desc = collection.description
+                    if (!desc.isNullOrBlank()) {
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = PillShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    Text(
+                        text = "${requests.size} requests",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onDeleteCollection,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Collection",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
+
+                if (requests.isEmpty()) {
+                    Text(
+                        text = "No saved requests in this collection",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        requests.forEach { req ->
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onOpenRequest(req) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    HttpMethodBadge(method = req.method.name)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = req.name.ifBlank { req.url },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = req.url,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { onDeleteRequest(req.id) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

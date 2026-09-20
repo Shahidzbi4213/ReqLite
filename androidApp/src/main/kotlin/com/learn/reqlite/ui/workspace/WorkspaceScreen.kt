@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
 import com.learn.reqlite.ui.environment.EnvironmentSelector
@@ -63,8 +64,10 @@ fun WorkspaceScreen(
 
     val openDrafts by viewModel.openDrafts.collectAsState()
     val activeDraftId by viewModel.activeDraftId.collectAsState()
+    val collections by viewModel.collections.collectAsState()
     var showTabsSheet by remember { mutableStateOf(false) }
     var showCurlDialog by remember { mutableStateOf(false) }
+    var showSaveCollectionDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val qrScannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -87,7 +90,7 @@ fun WorkspaceScreen(
     }
 
     LaunchedEffect(initialUrl, initialMethod) {
-        if (initialDraftId.isNullOrBlank() && !initialUrl.isNullOrBlank()) {
+        if (!initialUrl.isNullOrBlank()) {
             viewModel.setUrl(initialUrl)
             viewModel.setMethod(initialMethod)
         }
@@ -104,7 +107,14 @@ fun WorkspaceScreen(
 
     Scaffold(
         topBar = {
-            WorkspaceTopBar(
+            TopAppBar(
+                title = {
+                    EnvironmentSelector(
+                        activeEnvironment = activeEnvironment,
+                        environments = environments,
+                        onSelectEnvironment = { viewModel.selectEnvironment(it) }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.saveDraft(); onNavigateBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -113,6 +123,13 @@ fun WorkspaceScreen(
                 actions = {
                     IconButton(onClick = { showTabsSheet = true }) {
                          Icon(androidx.compose.material.icons.Icons.Default.Menu, contentDescription = "Open Tabs")
+                    }
+                    IconButton(onClick = { showSaveCollectionDialog = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save_collection),
+                            contentDescription = "Save to Collection",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                     IconButton(onClick = { showCurlDialog = true }) {
                         Icon(
@@ -351,4 +368,132 @@ fun WorkspaceScreen(
             }
         )
     }
+
+    if (showSaveCollectionDialog) {
+        SaveToCollectionDialog(
+            collections = collections,
+            initialUrl = url,
+            onDismiss = { showSaveCollectionDialog = false },
+            onSave = { colId, newColName, reqName ->
+                viewModel.saveToCollection(
+                    collectionId = colId,
+                    newCollectionName = newColName,
+                    requestName = reqName
+                ) {
+                    Toast.makeText(context, "Saved to collection", Toast.LENGTH_SHORT).show()
+                    showSaveCollectionDialog = false
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun SaveToCollectionDialog(
+    collections: List<com.learn.reqlite.domain.model.Collection>,
+    initialUrl: String,
+    onDismiss: () -> Unit,
+    onSave: (collectionId: String, newCollectionName: String?, requestName: String) -> Unit
+) {
+    var requestName by remember { mutableStateOf(initialUrl.ifBlank { "New Request" }) }
+    var isCreatingNew by remember { mutableStateOf(collections.isEmpty()) }
+    var newCollectionName by remember { mutableStateOf("") }
+    var selectedCollectionId by remember { mutableStateOf(collections.firstOrNull()?.id ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Save to Collection", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = requestName,
+                    onValueChange = { requestName = it },
+                    label = { Text("Request Name") },
+                    singleLine = true,
+                    shape = com.learn.reqlite.ui.theme.PillShape,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (collections.isEmpty() || isCreatingNew) {
+                    OutlinedTextField(
+                        value = newCollectionName,
+                        onValueChange = { newCollectionName = it },
+                        label = { Text("New Collection Name") },
+                        placeholder = { Text("e.g. My API") },
+                        singleLine = true,
+                        shape = com.learn.reqlite.ui.theme.PillShape,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (collections.isNotEmpty()) {
+                        TextButton(
+                            onClick = { isCreatingNew = false },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text("Choose existing collection", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                } else {
+                    Text("Select Collection:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        collections.forEach { col ->
+                            val isSelected = selectedCollectionId == col.id
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedCollectionId = col.id }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_folder),
+                                        contentDescription = null,
+                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = col.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    TextButton(
+                        onClick = { isCreatingNew = true },
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text("+ Create New Collection", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalReqName = requestName.trim().ifBlank { initialUrl.ifBlank { "Untitled Request" } }
+                    if (isCreatingNew || collections.isEmpty()) {
+                        onSave("", newCollectionName.trim(), finalReqName)
+                    } else {
+                        onSave(selectedCollectionId, null, finalReqName)
+                    }
+                },
+                enabled = if (isCreatingNew || collections.isEmpty()) newCollectionName.isNotBlank() else selectedCollectionId.isNotBlank(),
+                shape = com.learn.reqlite.ui.theme.PillShape
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

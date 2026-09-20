@@ -3,6 +3,7 @@ package com.learn.reqlite.ui.workspace
 import com.learn.reqlite.di.DiHelper
 import com.learn.reqlite.domain.engine.RequestExecutionEngine
 import com.learn.reqlite.domain.model.*
+import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.EnvironmentRepository
 import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
@@ -44,6 +45,7 @@ class IosWorkspaceAdapter(
     private val environmentRepository: EnvironmentRepository,
     private val requestRepository: RequestRepository,
     private val historyRepository: HistoryRepository,
+    private val collectionRepository: CollectionRepository,
     private val scope: CoroutineScope
 ) {
     constructor() : this(
@@ -51,11 +53,14 @@ class IosWorkspaceAdapter(
         environmentRepository = DiHelper.getEnvironmentRepository(),
         requestRepository = DiHelper.getRequestRepository(),
         historyRepository = DiHelper.getHistoryRepository(),
+        collectionRepository = DiHelper.getCollectionRepository(),
         scope = CoroutineScope(Dispatchers.Main)
     )
 
     private var envJob: Job? = null
     private var historyJob: Job? = null
+    private var collectionsJob: Job? = null
+    private var requestsJob: Job? = null
     private var executionJob: Job? = null
 
     fun observeEnvironments(onEnvironmentsChanged: (List<Environment>) -> Unit) {
@@ -201,9 +206,122 @@ class IosWorkspaceAdapter(
         }
     }
 
+    fun observeCollections(onCollectionsChanged: (List<Collection>) -> Unit) {
+        collectionsJob?.cancel()
+        collectionsJob = collectionRepository.getAllCollections()
+            .onEach { onCollectionsChanged(it) }
+            .launchIn(scope)
+    }
+
+    fun observeRequests(onRequestsChanged: (List<Request>) -> Unit) {
+        requestsJob?.cancel()
+        requestsJob = requestRepository.getAllRequests()
+            .onEach { onRequestsChanged(it) }
+            .launchIn(scope)
+    }
+
+    fun createCollection(
+        name: String,
+        description: String? = null,
+        onCreated: ((Collection) -> Unit)? = null
+    ) {
+        scope.launch {
+            val now = com.learn.reqlite.utils.common.nowMs()
+            val col = Collection(
+                id = "col_${now}_${(1000..9999).random()}",
+                name = name.trim(),
+                description = description?.trim(),
+                createdAt = now,
+                updatedAt = now
+            )
+            collectionRepository.insertCollection(col)
+            onCreated?.invoke(col)
+        }
+    }
+
+    fun deleteCollection(id: String) {
+        scope.launch {
+            val col = collectionRepository.getCollectionById(id)
+            if (col != null) {
+                collectionRepository.deleteCollection(col)
+            }
+        }
+    }
+
+    fun saveRequestToCollection(
+        collectionId: String,
+        name: String,
+        methodName: String,
+        url: String,
+        headers: List<RequestField> = emptyList(),
+        queryParams: List<RequestField> = emptyList(),
+        bodyContent: String? = null,
+        onSaved: ((Request) -> Unit)? = null
+    ) {
+        scope.launch {
+            val method = when (methodName.uppercase()) {
+                "POST" -> HttpMethod.POST
+                "PUT" -> HttpMethod.PUT
+                "DELETE" -> HttpMethod.DELETE
+                "PATCH" -> HttpMethod.PATCH
+                "HEAD" -> HttpMethod.HEAD
+                "OPTIONS" -> HttpMethod.OPTIONS
+                else -> HttpMethod.GET
+            }
+            val requestBody = if (!bodyContent.isNullOrBlank()) {
+                RequestBody.TextBody(bodyContent, "application/json")
+            } else {
+                RequestBody.NoBody
+            }
+            val now = com.learn.reqlite.utils.common.nowMs()
+            val req = Request(
+                id = "req_${now}_${(1000..9999).random()}",
+                collectionId = collectionId,
+                folderId = null,
+                name = name.ifBlank { url },
+                method = method,
+                url = url,
+                headers = headers,
+                queryParams = queryParams,
+                body = requestBody,
+                createdAt = now,
+                updatedAt = now
+            )
+            requestRepository.insertRequest(req)
+            onSaved?.invoke(req)
+        }
+    }
+
+    fun deleteRequest(id: String) {
+        scope.launch {
+            requestRepository.deleteRequest(id)
+        }
+    }
+
+    fun createRequestField(key: String, value: String, isEnabled: Boolean): RequestField {
+        return RequestField(
+            id = "fld_${com.learn.reqlite.utils.common.nowMs()}_${(1000..9999).random()}",
+            key = key,
+            value = value,
+            isEnabled = isEnabled,
+            description = null
+        )
+    }
+
+    fun extractRequestBodyText(request: Request): String {
+        return when (val b = request.body) {
+            is RequestBody.TextBody -> b.content
+            is RequestBody.UrlEncodedBody -> b.fields.filter { it.isEnabled }.joinToString("&") { "${it.key}=${it.value}" }
+            is RequestBody.FormDataBody -> b.parts.filter { it.isEnabled }.joinToString("&") { "${it.key}=${it.value}" }
+            else -> ""
+        }
+    }
+
     fun close() {
         envJob?.cancel()
         historyJob?.cancel()
+        collectionsJob?.cancel()
+        requestsJob?.cancel()
         executionJob?.cancel()
     }
 }

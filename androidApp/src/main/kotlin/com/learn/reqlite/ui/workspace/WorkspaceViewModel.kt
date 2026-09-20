@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.learn.reqlite.domain.engine.RequestExecutionEngine
 import com.learn.reqlite.domain.model.*
+import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.EnvironmentRepository
 import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
@@ -23,8 +24,11 @@ import io.ktor.http.HttpMethod as KtorHttpMethod
 import io.ktor.util.encodeBase64
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class PendingExecutionRequest(
@@ -39,10 +43,18 @@ class WorkspaceViewModel(
     private val environmentRepository: EnvironmentRepository? = null,
     private val historyRepository: HistoryRepository? = null,
     private val requestRepository: RequestRepository? = null,
+    private val collectionRepository: CollectionRepository? = null,
     private val httpClient: HttpClient? = null,
     private val secureStorage: SecureStorage? = null,
     private val variableResolver: VariableResolver = VariableResolver()
 ) : ViewModel() {
+
+    val collections: StateFlow<List<com.learn.reqlite.domain.model.Collection>> = (collectionRepository?.getAllCollections() ?: emptyFlow())
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
 
     private val _url = MutableStateFlow("")
     val url: StateFlow<String> = _url.asStateFlow()
@@ -480,6 +492,49 @@ class WorkspaceViewModel(
             "HEAD" -> com.learn.reqlite.domain.model.HttpMethod.HEAD
             "OPTIONS" -> com.learn.reqlite.domain.model.HttpMethod.OPTIONS
             else -> com.learn.reqlite.domain.model.HttpMethod.GET
+        }
+    }
+
+    fun saveToCollection(
+        collectionId: String,
+        newCollectionName: String? = null,
+        requestName: String? = null,
+        onSaved: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val targetCollectionId = if (!newCollectionName.isNullOrBlank()) {
+                val now = nowMs()
+                val col = com.learn.reqlite.domain.model.Collection(
+                    id = "col_${now}_${(1000..9999).random()}",
+                    name = newCollectionName.trim(),
+                    createdAt = now,
+                    updatedAt = now
+                )
+                collectionRepository?.insertCollection(col)
+                col.id
+            } else {
+                collectionId
+            }
+
+            val reqName = requestName?.trim()?.takeIf { it.isNotBlank() } ?: _url.value.ifBlank { "Untitled Request" }
+            val now = nowMs()
+            val request = Request(
+                id = "req_${now}_${(1000..9999).random()}",
+                collectionId = targetCollectionId,
+                folderId = null,
+                name = reqName,
+                method = parseHttpMethod(_method.value),
+                url = _url.value,
+                headers = _headers.value,
+                queryParams = _queryParams.value,
+                body = _body.value,
+                createdAt = now,
+                updatedAt = now
+            )
+
+            requestRepository?.insertRequest(request)
+            saveDraft()
+            onSaved()
         }
     }
 }

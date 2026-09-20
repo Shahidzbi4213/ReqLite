@@ -14,7 +14,8 @@ val appModule = module {
     factory {
         HomeViewModel(
             historyRepository = get(),
-            requestRepository = get()
+            requestRepository = get(),
+            collectionRepository = get()
         )
     }
     factory { 
@@ -23,6 +24,7 @@ val appModule = module {
             environmentRepository = getOrNull(),
             historyRepository = getOrNull(),
             requestRepository = getOrNull(),
+            collectionRepository = getOrNull(),
             httpClient = getOrNull(),
             secureStorage = getOrNull(),
             variableResolver = get()
