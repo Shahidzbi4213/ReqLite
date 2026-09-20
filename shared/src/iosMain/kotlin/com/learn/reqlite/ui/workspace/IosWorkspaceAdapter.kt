@@ -7,6 +7,11 @@ import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.EnvironmentRepository
 import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
+import com.learn.reqlite.domain.export.WorkspaceExportImportManager
+import com.learn.reqlite.domain.export.WorkspaceImporter
+import com.learn.reqlite.domain.export.WorkspaceImportResult
+import com.learn.reqlite.domain.parser.PostmanCollectionParser
+import com.learn.reqlite.domain.parser.PostmanParseResult
 import com.learn.reqlite.domain.parser.SmartPayload
 import com.learn.reqlite.domain.parser.SmartPayloadParser
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -46,14 +51,26 @@ class IosWorkspaceAdapter(
     private val requestRepository: RequestRepository,
     private val historyRepository: HistoryRepository,
     private val collectionRepository: CollectionRepository,
+    workspaceImporter: WorkspaceImporter? = null,
+    postmanParser: PostmanCollectionParser? = null,
     private val scope: CoroutineScope
 ) {
+    private val postmanParser: PostmanCollectionParser = postmanParser ?: com.learn.reqlite.domain.parser.PostmanCollectionParserImpl()
+    private val workspaceImporter: WorkspaceImporter = workspaceImporter ?: WorkspaceExportImportManager(
+        collectionRepository = collectionRepository,
+        requestRepository = requestRepository,
+        environmentRepository = environmentRepository,
+        postmanParser = this.postmanParser
+    )
+
     constructor() : this(
         executionEngine = DiHelper.getRequestExecutionEngine(),
         environmentRepository = DiHelper.getEnvironmentRepository(),
         requestRepository = DiHelper.getRequestRepository(),
         historyRepository = DiHelper.getHistoryRepository(),
         collectionRepository = DiHelper.getCollectionRepository(),
+        workspaceImporter = DiHelper.getWorkspaceImporter(),
+        postmanParser = DiHelper.getPostmanCollectionParser(),
         scope = CoroutineScope(Dispatchers.Main)
     )
 
@@ -314,6 +331,34 @@ class IosWorkspaceAdapter(
             is RequestBody.UrlEncodedBody -> b.fields.filter { it.isEnabled }.joinToString("&") { "${it.key}=${it.value}" }
             is RequestBody.FormDataBody -> b.parts.filter { it.isEnabled }.joinToString("&") { "${it.key}=${it.value}" }
             else -> ""
+        }
+    }
+
+    fun previewPostmanCollection(
+        jsonContent: String,
+        onSuccess: (collectionName: String, requestsCount: Int, foldersCount: Int) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        when (val result = postmanParser.parse(jsonContent)) {
+            is PostmanParseResult.Error -> onError(result.message)
+            is PostmanParseResult.Success -> {
+                onSuccess(result.collection.name, result.requests.size, result.folders.size)
+            }
+        }
+    }
+
+    fun importPostmanCollection(
+        jsonContent: String,
+        onSuccess: (collectionName: String, requestsCount: Int) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        scope.launch {
+            when (val result = workspaceImporter.importPostmanCollection(jsonContent)) {
+                is WorkspaceImportResult.Error -> onError(result.message)
+                is WorkspaceImportResult.Success -> {
+                    onSuccess("Imported Collection", result.requestsImported)
+                }
+            }
         }
     }
 

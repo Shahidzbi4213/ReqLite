@@ -16,10 +16,18 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.learn.reqlite.domain.export.WorkspaceImporter
+import com.learn.reqlite.domain.export.WorkspaceImportResult
+import com.learn.reqlite.domain.parser.PostmanCollectionParser
+import com.learn.reqlite.domain.parser.PostmanCollectionParserImpl
+import com.learn.reqlite.domain.parser.PostmanParseResult
+
 class HomeViewModel(
     private val historyRepository: HistoryRepository,
     private val requestRepository: RequestRepository,
-    private val collectionRepository: CollectionRepository? = null
+    private val collectionRepository: CollectionRepository? = null,
+    private val workspaceImporter: WorkspaceImporter? = null,
+    private val postmanParser: PostmanCollectionParser = PostmanCollectionParserImpl()
 ) : ViewModel() {
 
     val recentRequests: StateFlow<List<HistoryEntry>> = historyRepository.getAllHistoryEntries()
@@ -122,6 +130,37 @@ class HomeViewModel(
                 )
                 requestRepository.insertDraft(fallbackDraft)
                 onComplete(fallbackDraft.id)
+            }
+        }
+    }
+
+    fun importPostmanCollection(
+        jsonContent: String,
+        onComplete: (Result<Int>) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                if (workspaceImporter != null) {
+                    when (val res = workspaceImporter.importPostmanCollection(jsonContent)) {
+                        is WorkspaceImportResult.Success -> onComplete(Result.success(res.requestsImported))
+                        is WorkspaceImportResult.Error -> onComplete(Result.failure(Exception(res.message)))
+                    }
+                } else if (collectionRepository != null) {
+                    when (val parseResult = postmanParser.parse(jsonContent)) {
+                        is PostmanParseResult.Error -> onComplete(Result.failure(Exception(parseResult.message)))
+                        is PostmanParseResult.Success -> {
+                            collectionRepository.insertCollection(parseResult.collection)
+                            for (req in parseResult.requests) {
+                                requestRepository.insertRequest(req)
+                            }
+                            onComplete(Result.success(parseResult.requests.size))
+                        }
+                    }
+                } else {
+                    onComplete(Result.failure(Exception("Collection repository not available")))
+                }
+            } catch (e: Exception) {
+                onComplete(Result.failure(e))
             }
         }
     }

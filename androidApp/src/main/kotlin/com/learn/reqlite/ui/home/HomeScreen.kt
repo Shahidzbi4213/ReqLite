@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.res.painterResource
 import com.learn.reqlite.domain.model.Collection
 import com.learn.reqlite.domain.model.Request
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +49,7 @@ fun HomeScreen(
     val drafts by viewModel.drafts.collectAsState()
     val collections by viewModel.collections.collectAsState()
     val savedRequests by viewModel.savedRequests.collectAsState()
+    val context = LocalContext.current
 
     HomeScreenContent(
         recentRequests = recentRequests,
@@ -73,6 +76,17 @@ fun HomeScreen(
                 onNavigateToRequest(null, null, draftId)
             }
         },
+        onImportPostmanCollection = { json ->
+            viewModel.importPostmanCollection(json) { result ->
+                if (result.isSuccess) {
+                    val count = result.getOrNull() ?: 0
+                    Toast.makeText(context, "Imported collection with $count requests!", Toast.LENGTH_SHORT).show()
+                } else {
+                    val msg = result.exceptionOrNull()?.message ?: "Import failed"
+                    Toast.makeText(context, "Import failed: $msg", Toast.LENGTH_LONG).show()
+                }
+            }
+        },
         modifier = modifier
     )
 }
@@ -90,11 +104,13 @@ fun HomeScreenContent(
     onDeleteCollection: (Collection) -> Unit = {},
     onDeleteRequest: (String) -> Unit = {},
     onOpenSavedRequest: (Request) -> Unit = {},
+    onImportPostmanCollection: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var quickUrl by remember { mutableStateOf("") }
     var curlCommand by remember { mutableStateOf("") }
     var showCreateCollectionDialog by remember { mutableStateOf(false) }
+    var showImportPostmanDialog by remember { mutableStateOf(false) }
     var newCollectionName by remember { mutableStateOf("") }
     val expandedCollectionIds = remember { mutableStateListOf<String>() }
 
@@ -164,17 +180,25 @@ fun HomeScreenContent(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    TextButton(
-                        onClick = { showCreateCollectionDialog = true },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("New Collection", style = MaterialTheme.typography.labelMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = { showImportPostmanDialog = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("Import", style = MaterialTheme.typography.labelMedium)
+                        }
+                        TextButton(
+                            onClick = { showCreateCollectionDialog = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("New", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
             }
@@ -305,7 +329,97 @@ fun HomeScreenContent(
                 }
             )
         }
+
+        if (showImportPostmanDialog) {
+            ImportPostmanDialog(
+                onDismiss = { showImportPostmanDialog = false },
+                onImport = { json ->
+                    showImportPostmanDialog = false
+                    onImportPostmanCollection(json)
+                }
+            )
+        }
     }
+}
+
+@Composable
+fun ImportPostmanDialog(
+    onDismiss: () -> Unit,
+    onImport: (jsonContent: String) -> Unit
+) {
+    var jsonText by remember { mutableStateOf("") }
+    var previewInfo by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import Postman Collection", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Paste a Postman v2.0 or v2.1 collection JSON below to import all endpoints, folders, and headers into ReqLite.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = jsonText,
+                    onValueChange = {
+                        jsonText = it
+                        if (it.isNotBlank()) {
+                            val parser = com.learn.reqlite.domain.parser.PostmanCollectionParserImpl()
+                            when (val res = parser.parse(it)) {
+                                is com.learn.reqlite.domain.parser.PostmanParseResult.Success -> {
+                                    previewInfo = "${res.collection.name} • ${res.requests.size} requests • ${res.folders.size} folders"
+                                    isError = false
+                                }
+                                is com.learn.reqlite.domain.parser.PostmanParseResult.Error -> {
+                                    previewInfo = res.message
+                                    isError = true
+                                }
+                            }
+                        } else {
+                            previewInfo = null
+                            isError = false
+                        }
+                    },
+                    label = { Text("Collection JSON") },
+                    placeholder = { Text("{\"info\": {\"name\": ...}, \"item\": [...]}") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 220.dp),
+                    maxLines = 8,
+                    isError = isError
+                )
+
+                if (previewInfo != null) {
+                    Text(
+                        text = previewInfo ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (jsonText.isNotBlank() && !isError) {
+                        onImport(jsonText.trim())
+                    }
+                },
+                enabled = jsonText.isNotBlank() && !isError
+            ) {
+                Text("Import")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

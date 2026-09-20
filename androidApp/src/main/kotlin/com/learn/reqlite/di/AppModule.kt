@@ -15,7 +15,8 @@ val appModule = module {
         HomeViewModel(
             historyRepository = get(),
             requestRepository = get(),
-            collectionRepository = get()
+            collectionRepository = get(),
+            workspaceImporter = getOrNull()
         )
     }
     factory { 

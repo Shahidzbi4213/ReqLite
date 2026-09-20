@@ -157,6 +157,38 @@ class HomeViewModelTest {
         assertEquals(0, viewModel.drafts.value.size)
     }
 
+    @Test
+    fun importPostmanCollection_insertsCollectionAndRequests() = runTest {
+        val postmanJson = """
+        {
+          "info": {
+            "name": "Imported Test API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Test Endpoint",
+              "request": {
+                "method": "POST",
+                "url": "https://api.test.com/v1"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        var importedCount = 0
+        viewModel.importPostmanCollection(postmanJson) { result ->
+            importedCount = result.getOrNull() ?: 0
+        }
+
+        assertEquals(1, importedCount)
+        assertEquals(1, viewModel.collections.value.size)
+        assertEquals("Imported Test API", viewModel.collections.value.first().name)
+        assertEquals(1, viewModel.savedRequests.value.size)
+        assertEquals("Test Endpoint", viewModel.savedRequests.value.first().name)
+    }
+
     class FakeHistoryRepository : HistoryRepository {
         private val entries = MutableStateFlow<List<HistoryEntry>>(emptyList())
 

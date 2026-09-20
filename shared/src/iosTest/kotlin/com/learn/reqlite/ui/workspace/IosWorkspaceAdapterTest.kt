@@ -8,6 +8,7 @@ import com.learn.reqlite.domain.repository.RequestRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -73,6 +74,53 @@ class IosWorkspaceAdapterTest {
 
         val retrievedReq = fakeReqRepo.getRequestById(savedRequest.id)
         assertNotNull(retrievedReq)
+    }
+
+    @Test
+    fun adapter_previewsAndImports_postmanCollection() = runTest {
+        val postmanJson = """
+        {
+          "info": {
+            "name": "iOS Test Collection",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Quick Ping",
+              "request": {
+                "method": "GET",
+                "url": "https://api.example.com/ping"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        var previewName: String? = null
+        var previewRequests: Int = 0
+        adapter.previewPostmanCollection(
+            jsonContent = postmanJson,
+            onSuccess = { name, reqs, _ ->
+                previewName = name
+                previewRequests = reqs
+            },
+            onError = { }
+        )
+
+        assertEquals("iOS Test Collection", previewName)
+        assertEquals(1, previewRequests)
+
+        var importSuccess = false
+        adapter.importPostmanCollection(
+            jsonContent = postmanJson,
+            onSuccess = { _, _ ->
+                importSuccess = true
+            },
+            onError = { }
+        )
+
+        val allCollections = fakeColRepo.getAllCollections().first()
+        assertTrue(allCollections.any { it.name == "iOS Test Collection" })
     }
 
     @Test

@@ -122,17 +122,31 @@ struct WorkspaceView: View {
                         }
                     }
 
-                    Button {
-                        viewModel.showingNewCollectionAlert = true
-                    } label: {
-                        HStack {
+                    HStack {
+                        Button {
+                            viewModel.showingNewCollectionAlert = true
+                        } label: {
                             Label("New Collection", systemImage: "plus")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(Color.accentColor)
-                            Spacer()
                         }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        Button {
+                            viewModel.showingImportPostmanSheet = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "square.and.arrow.down")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text("Import")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                     .padding(.vertical, ReqTokens.Spacing.xxs)
                 }
 
@@ -373,6 +387,17 @@ struct WorkspaceView: View {
                         }
                     )
                 }
+                .sheet(isPresented: $viewModel.showingImportPostmanSheet) {
+                    ReqImportPostmanSheet(
+                        isPresented: $viewModel.showingImportPostmanSheet,
+                        onPreview: { json, completion in
+                            viewModel.previewPostmanCollection(json, completion: completion)
+                        },
+                        onImport: { json, completion in
+                            viewModel.importPostmanCollection(json, completion: completion)
+                        }
+                    )
+                }
                 .alert("New Collection", isPresented: $viewModel.showingNewCollectionAlert) {
                     TextField("Collection Name", text: $newCollectionName)
                     Button("Create") {
@@ -570,3 +595,230 @@ struct ReqPasteCurlSheet: View {
         .presentationDetents([.medium, .large])
     }
 }
+
+// MARK: - Postman Collection Import Sheet
+struct ReqImportPostmanSheet: View {
+    @Binding var isPresented: Bool
+    let onPreview: (String, @escaping (String?, Int, Int, String?) -> Void) -> Void
+    let onImport: (String, @escaping (Bool, String) -> Void) -> Void
+
+    @State private var jsonText: String = ""
+    @State private var previewName: String? = nil
+    @State private var previewRequestsCount: Int = 0
+    @State private var previewFoldersCount: Int = 0
+    @State private var previewError: String? = nil
+    @State private var isImporting: Bool = false
+    @State private var errorMessage: String? = nil
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: ReqTokens.Spacing.sm) {
+                    Text("Paste a Postman Collection (v2.0 or v2.1 JSON) to import its requests, nested folders, headers, and parameters.")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .padding(.top, ReqTokens.Spacing.sm)
+
+                    TextEditor(text: $jsonText)
+                        .font(.system(size: 13, design: .monospaced))
+                        .padding(ReqTokens.Spacing.xs)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .frame(minHeight: 180, maxHeight: 260)
+                        .onChange(of: jsonText) { newValue in
+                            runPreview(newValue)
+                        }
+
+                    HStack {
+                        Button(action: {
+                            if let clip = UIPasteboard.general.string {
+                                jsonText = clip
+                            }
+                        }) {
+                            Label("Paste Clipboard", systemImage: "doc.on.clipboard")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .buttonStyle(.bordered)
+
+                        Spacer()
+
+                        if !jsonText.isEmpty {
+                            Button("Clear") {
+                                jsonText = ""
+                            }
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, ReqTokens.Spacing.md)
+
+                    // Preview Card or Error
+                    if let name = previewName {
+                        VStack(alignment: .leading, spacing: ReqTokens.Spacing.xs) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.system(size: 16))
+                                Text("Valid Postman Collection")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.primary)
+                            }
+                            Text(name)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(.primary)
+
+                            HStack(spacing: 8) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.right.circle")
+                                        .font(.system(size: 11))
+                                    Text("\(previewRequestsCount) requests")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.accentColor.opacity(0.12))
+                                .foregroundColor(Color.accentColor)
+                                .clipShape(Capsule())
+
+                                if previewFoldersCount > 0 {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "folder")
+                                            .font(.system(size: 11))
+                                        Text("\(previewFoldersCount) folders")
+                                            .font(.system(size: 12, weight: .medium))
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.secondary.opacity(0.12))
+                                    .foregroundColor(.secondary)
+                                    .clipShape(Capsule())
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(ReqTokens.Spacing.sm)
+                        .background(Color.green.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: ReqTokens.Radius.control)
+                                .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control))
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .padding(.top, ReqTokens.Spacing.xs)
+                    } else if let error = previewError, !jsonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.system(size: 14))
+                                Text("Unrecognized or Invalid Collection")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.orange)
+                            }
+                            Text(error)
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(ReqTokens.Spacing.sm)
+                        .background(Color.orange.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: ReqTokens.Radius.control)
+                                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control))
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .padding(.top, ReqTokens.Spacing.xs)
+                    }
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(.system(size: 12))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+                    }
+
+                    Spacer(minLength: ReqTokens.Spacing.xl)
+                }
+            }
+            .navigationTitle("Import Postman")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .disabled(isImporting)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isImporting {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    } else {
+                        Button("Import") {
+                            startImport()
+                        }
+                        .fontWeight(.bold)
+                        .disabled(previewName == nil)
+                    }
+                }
+            }
+            .onAppear {
+                if let clip = UIPasteboard.general.string, clip.contains("\"_postman_id\"") || clip.contains("\"info\"") {
+                    jsonText = clip
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func runPreview(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            previewName = nil
+            previewRequestsCount = 0
+            previewFoldersCount = 0
+            previewError = nil
+            errorMessage = nil
+            return
+        }
+
+        onPreview(trimmed) { name, reqs, folders, error in
+            Task { @MainActor in
+                if let error = error {
+                    self.previewName = nil
+                    self.previewRequestsCount = 0
+                    self.previewFoldersCount = 0
+                    self.previewError = error
+                } else {
+                    self.previewName = name
+                    self.previewRequestsCount = reqs
+                    self.previewFoldersCount = folders
+                    self.previewError = nil
+                }
+            }
+        }
+    }
+
+    private func startImport() {
+        let trimmed = jsonText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isImporting = true
+        errorMessage = nil
+
+        onImport(trimmed) { success, message in
+            Task { @MainActor in
+                isImporting = false
+                if success {
+                    isPresented = false
+                } else {
+                    errorMessage = message
+                }
+            }
+        }
+    }
+}
+

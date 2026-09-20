@@ -29,6 +29,7 @@ class WorkspaceViewModel: ObservableObject {
     @Published var expandedCollectionIds: Set<String> = []
     @Published var showingSaveCollectionSheet: Bool = false
     @Published var showingNewCollectionAlert: Bool = false
+    @Published var showingImportPostmanSheet: Bool = false
 
     struct KeyValueItem: Identifiable, Equatable {
         let id = UUID()
@@ -372,5 +373,41 @@ class WorkspaceViewModel: ObservableObject {
                 self?.executionState = .idle
             }
         }
+    }
+
+    func previewPostmanCollection(_ json: String, completion: @escaping (String?, Int, Int, String?) -> Void) {
+        guard let adapter = adapter else {
+            completion(nil, 0, 0, "Adapter unavailable")
+            return
+        }
+        adapter.previewPostmanCollection(
+            jsonContent: json,
+            onSuccess: { name, reqs, folders in
+                completion(name, Int(truncating: reqs), Int(truncating: folders), nil)
+            },
+            onError: { errorMsg in
+                completion(nil, 0, 0, errorMsg)
+            }
+        )
+    }
+
+    func importPostmanCollection(_ json: String, completion: @escaping (Bool, String) -> Void) {
+        guard let adapter = adapter else {
+            completion(false, "Adapter unavailable")
+            return
+        }
+        adapter.importPostmanCollection(
+            jsonContent: json,
+            onSuccess: { name, reqs in
+                Task { @MainActor in
+                    completion(true, "Successfully imported \(reqs) requests into \(name)")
+                }
+            },
+            onError: { errorMsg in
+                Task { @MainActor in
+                    completion(false, errorMsg)
+                }
+            }
+        )
     }
 }
