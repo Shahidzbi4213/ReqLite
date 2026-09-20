@@ -224,7 +224,7 @@ struct WorkspaceView: View {
                     }
                     .scrollContentBackground(.hidden)
                 }
-                .navigationTitle("ReqLite")
+                .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -240,40 +240,41 @@ struct WorkspaceView: View {
                                 }
                             }
                             .foregroundColor(.primary)
-                            .padding(.horizontal, ReqTokens.Spacing.xs)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, viewModel.historyEntries.isEmpty ? 10 : ReqTokens.Spacing.xs)
+                            .frame(height: ReqTokens.Height.compact)
                             .reqGlass(.quiet, cornerRadius: ReqTokens.Radius.pill)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Request History")
                     }
 
-                    // Environment & Save in navigation bar
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        HStack(spacing: 8) {
-                            Button {
-                                viewModel.showingSaveCollectionSheet = true
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "folder.badge.plus")
-                                        .font(.system(size: 13, weight: .semibold))
-                                    Text("Save")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .foregroundColor(.primary)
-                                .padding(.horizontal, ReqTokens.Spacing.xs)
-                                .padding(.vertical, 4)
-                                .reqGlass(.quiet, cornerRadius: ReqTokens.Radius.pill)
+                    ToolbarItem(placement: .principal) {
+                        EnvironmentBadgeView(
+                            activeEnvironment: viewModel.activeEnvironment,
+                            environments: viewModel.environments,
+                            onSelect: { env in
+                                viewModel.selectEnvironment(env)
                             }
-                            .buttonStyle(.plain)
+                        )
+                    }
 
-                            EnvironmentBadgeView(
-                                activeEnvironment: viewModel.activeEnvironment,
-                                environments: viewModel.environments,
-                                onSelect: { env in
-                                    viewModel.selectEnvironment(env)
-                                }
-                            )
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            viewModel.showingSaveCollectionSheet = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder.badge.plus")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Save")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, ReqTokens.Spacing.xs)
+                            .frame(height: ReqTokens.Height.compact)
+                            .reqGlass(.quiet, cornerRadius: ReqTokens.Radius.pill)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Save to Collection")
                     }
                 }
                 .safeAreaInset(edge: .bottom) {

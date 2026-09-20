@@ -47,6 +47,7 @@ struct EnvironmentBadgeView: View {
                         Text(env.name)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.orange)
+                            .lineLimit(1)
                         Text("PROD")
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 4)
@@ -63,6 +64,7 @@ struct EnvironmentBadgeView: View {
                         Text(env.name)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.primary)
+                            .lineLimit(1)
                         Text("(\(env.variables.count))")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.secondary)
@@ -74,6 +76,7 @@ struct EnvironmentBadgeView: View {
                     Text("No Environment")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
 
                 Image(systemName: "chevron.up.chevron.down")
