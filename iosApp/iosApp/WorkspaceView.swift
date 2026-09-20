@@ -241,27 +241,6 @@ struct WorkspaceView: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            viewModel.showingHistorySheet = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .font(.system(size: 14, weight: .semibold))
-                                if !viewModel.historyEntries.isEmpty {
-                                    Text("\(viewModel.historyEntries.count)")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                }
-                            }
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, viewModel.historyEntries.isEmpty ? 10 : ReqTokens.Spacing.xs)
-                            .frame(height: ReqTokens.Height.compact)
-                            .reqGlass(.quiet, cornerRadius: ReqTokens.Radius.pill)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Request History")
-                    }
-
                     ToolbarItem(placement: .principal) {
                         EnvironmentBadgeView(
                             activeEnvironment: viewModel.activeEnvironment,
@@ -272,20 +251,45 @@ struct WorkspaceView: View {
                         )
                     }
 
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        Button {
+                            viewModel.showingHistorySheet = true
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(uiColor: .secondarySystemFill))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                                )
+                                .overlay(alignment: .topTrailing) {
+                                    if !viewModel.historyEntries.isEmpty {
+                                        Circle()
+                                            .fill(Color.accentColor)
+                                            .frame(width: 7, height: 7)
+                                            .offset(x: 1, y: -1)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Request History")
+
                         Button {
                             viewModel.showingSaveCollectionSheet = true
                         } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "folder.badge.plus")
-                                    .font(.system(size: 13, weight: .semibold))
-                                Text("Save")
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, ReqTokens.Spacing.xs)
-                            .frame(height: ReqTokens.Height.compact)
-                            .reqGlass(.quiet, cornerRadius: ReqTokens.Radius.pill)
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(uiColor: .secondarySystemFill))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                                )
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Save to Collection")
