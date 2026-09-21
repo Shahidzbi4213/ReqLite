@@ -63,6 +63,8 @@ class SmartPayloadParser(
                     bearerToken = bearerToken,
                     description = "Imported from cURL"
                 )
+            } else if (curlResult is CurlParseResult.Error) {
+                return SmartPayload.Error(curlResult.message)
             }
         }
 

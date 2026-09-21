@@ -30,6 +30,23 @@ class HomeViewModel(
     private val postmanParser: PostmanCollectionParser = PostmanCollectionParserImpl()
 ) : ViewModel() {
 
+    private val effectiveImporter: WorkspaceImporter? by lazy {
+        workspaceImporter ?: collectionRepository?.let { colRepo ->
+            com.learn.reqlite.domain.export.WorkspaceExportImportManager(
+                collectionRepository = colRepo,
+                requestRepository = requestRepository,
+                environmentRepository = object : com.learn.reqlite.domain.repository.EnvironmentRepository {
+                    override fun getAllEnvironments() = kotlinx.coroutines.flow.flowOf(emptyList<com.learn.reqlite.domain.model.Environment>())
+                    override suspend fun getEnvironmentById(id: String) = null
+                    override suspend fun insertEnvironment(environment: com.learn.reqlite.domain.model.Environment) {}
+                    override suspend fun updateEnvironment(environment: com.learn.reqlite.domain.model.Environment) {}
+                    override suspend fun deleteEnvironment(id: String) {}
+                },
+                postmanParser = postmanParser
+            )
+        }
+    }
+
     val recentRequests: StateFlow<List<HistoryEntry>> = historyRepository.getAllHistoryEntries()
         .stateIn(
             scope = viewModelScope,
@@ -121,15 +138,6 @@ class HomeViewModel(
             if (result is com.learn.reqlite.domain.parser.CurlParseResult.Success) {
                 requestRepository.insertDraft(result.draft)
                 onComplete(result.draft.id)
-            } else {
-                val fallbackDraft = Draft(
-                    id = "draft_${nowMs()}",
-                    url = curlCommand.trim(),
-                    method = com.learn.reqlite.domain.model.HttpMethod.GET,
-                    updatedAt = nowMs()
-                )
-                requestRepository.insertDraft(fallbackDraft)
-                onComplete(fallbackDraft.id)
             }
         }
     }
@@ -140,24 +148,14 @@ class HomeViewModel(
     ) {
         viewModelScope.launch {
             try {
-                if (workspaceImporter != null) {
-                    when (val res = workspaceImporter.importPostmanCollection(jsonContent)) {
+                val importer = effectiveImporter
+                if (importer != null) {
+                    when (val res = importer.importPostmanCollection(jsonContent)) {
                         is WorkspaceImportResult.Success -> onComplete(Result.success(res.requestsImported))
                         is WorkspaceImportResult.Error -> onComplete(Result.failure(Exception(res.message)))
                     }
-                } else if (collectionRepository != null) {
-                    when (val parseResult = postmanParser.parse(jsonContent)) {
-                        is PostmanParseResult.Error -> onComplete(Result.failure(Exception(parseResult.message)))
-                        is PostmanParseResult.Success -> {
-                            collectionRepository.insertCollection(parseResult.collection)
-                            for (req in parseResult.requests) {
-                                requestRepository.insertRequest(req)
-                            }
-                            onComplete(Result.success(parseResult.requests.size))
-                        }
-                    }
                 } else {
-                    onComplete(Result.failure(Exception("Collection repository not available")))
+                    onComplete(Result.failure(Exception("Workspace importer not available")))
                 }
             } catch (e: Exception) {
                 onComplete(Result.failure(e))

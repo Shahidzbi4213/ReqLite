@@ -353,10 +353,14 @@ class IosWorkspaceAdapter(
         onError: (String) -> Unit
     ) {
         scope.launch {
+            val parsedName = when (val parsed = postmanParser.parse(jsonContent)) {
+                is PostmanParseResult.Success -> parsed.collection.name
+                else -> "Imported Collection"
+            }
             when (val result = workspaceImporter.importPostmanCollection(jsonContent)) {
                 is WorkspaceImportResult.Error -> onError(result.message)
                 is WorkspaceImportResult.Success -> {
-                    onSuccess("Imported Collection", result.requestsImported)
+                    onSuccess(parsedName, result.requestsImported)
                 }
             }
         }

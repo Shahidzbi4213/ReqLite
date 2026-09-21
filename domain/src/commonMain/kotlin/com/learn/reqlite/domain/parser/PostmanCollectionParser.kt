@@ -70,7 +70,8 @@ class PostmanCollectionParserImpl(
 
         val collectionDesc = extractDescription(infoObj["description"])
         val now = 1000L + idCounter++
-        val collectionId = "col_pm_${now}_${(1000..9999).random()}"
+        val rawId = infoObj["_postman_id"].asString() ?: infoObj["id"].asString()
+        val collectionId = rawId?.trim()?.ifBlank { null } ?: "col_pm_${now}_${(1000..9999).random()}"
 
         val collection = Collection(
             id = collectionId,

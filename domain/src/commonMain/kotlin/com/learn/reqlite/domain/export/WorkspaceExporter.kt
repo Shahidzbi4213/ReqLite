@@ -342,6 +342,15 @@ class WorkspaceExportImportManager(
                     }
                 }
 
+                if (strategy == ImportStrategy.SKIP_EXISTING && !shouldInsertCollection) {
+                    return WorkspaceImportResult.Success(
+                        collectionsImported = 0,
+                        requestsImported = 0,
+                        environmentsImported = 0,
+                        warnings = listOf("Collection '${collection.name}' already exists and was skipped")
+                    )
+                }
+
                 if (shouldInsertCollection) {
                     val finalCollection = if (targetCollectionId != collection.id) {
                         collection.copy(id = targetCollectionId)
