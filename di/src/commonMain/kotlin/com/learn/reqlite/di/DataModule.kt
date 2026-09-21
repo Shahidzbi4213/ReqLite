@@ -9,8 +9,10 @@ import com.learn.reqlite.data.repository.RequestRepositoryImpl
 import com.learn.reqlite.domain.engine.RequestExecutionEngine
 import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.EnvironmentRepository
+import com.learn.reqlite.domain.repository.FolderRepository
 import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
+import com.learn.reqlite.data.repository.FolderRepositoryImpl
 import com.learn.reqlite.domain.usecase.RequestValidator
 import com.learn.reqlite.domain.usecase.VariableResolver
 import io.ktor.client.HttpClient
@@ -49,6 +51,7 @@ val dataModule = module {
     single<EnvironmentRepository> { EnvironmentRepositoryImpl(get(), get()) }
     single<HistoryRepository> { HistoryRepositoryImpl(get()) }
     single<CollectionRepository> { CollectionRepositoryImpl(get()) }
+    single<FolderRepository> { FolderRepositoryImpl(get()) }
 
     single { VariableResolver() }
     single { RequestValidator(get()) }

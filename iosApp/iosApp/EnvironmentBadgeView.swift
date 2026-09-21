@@ -38,17 +38,20 @@ struct EnvironmentBadgeView: View {
                 }
             }
         } label: {
-            HStack(spacing: ReqTokens.Spacing.xs) {
+            HStack(spacing: 6) {
                 if let env = activeEnvironment {
                     if isProtected {
                         Image(systemName: "shield.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.orange)
+
                         Text(env.name)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.orange)
+                            .lineLimit(1)
+
                         Text("PROD")
-                            .font(.system(size: 9, weight: .heavy))
+                            .font(.system(size: 8, weight: .heavy))
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1.5)
                             .background(
@@ -57,33 +60,47 @@ struct EnvironmentBadgeView: View {
                             )
                             .foregroundColor(.orange)
                     } else {
-                        Image(systemName: "globe")
-                            .font(.system(size: 12))
-                            .foregroundColor(.accentColor)
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+
                         Text(env.name)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.primary)
-                        Text("(\(env.variables.count))")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
+                            .lineLimit(1)
                     }
                 } else {
-                    Image(systemName: "slash.circle")
-                        .font(.system(size: 12))
+                    Image(systemName: "globe")
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
+
                     Text("No Environment")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
 
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.secondary.opacity(0.8))
-                
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(isProtected ? .orange.opacity(0.8) : .secondary.opacity(0.6))
             }
-            .padding(.horizontal, ReqTokens.Spacing.sm)
-            .frame(height: ReqTokens.Height.compact)
-            .reqGlass(isProtected ? .prominent(tint: .orange) : .quiet, cornerRadius: ReqTokens.Radius.pill)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(
+                isProtected
+                    ? Color.orange.opacity(colorScheme == .dark ? 0.22 : 0.12)
+                    : Color(uiColor: .secondarySystemFill)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        isProtected
+                            ? Color.orange.opacity(0.35)
+                            : Color.primary.opacity(0.08),
+                        lineWidth: 0.5
+                    )
+            )
+            .clipShape(Capsule(style: .continuous))
         }
     }
 }

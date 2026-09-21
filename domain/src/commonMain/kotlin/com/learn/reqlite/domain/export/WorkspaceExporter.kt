@@ -7,8 +7,12 @@ import com.learn.reqlite.domain.model.Request
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
 import com.learn.reqlite.domain.model.Variable
+import com.learn.reqlite.domain.parser.PostmanCollectionParser
+import com.learn.reqlite.domain.parser.PostmanCollectionParserImpl
+import com.learn.reqlite.domain.parser.PostmanParseResult
 import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.EnvironmentRepository
+import com.learn.reqlite.domain.repository.FolderRepository
 import com.learn.reqlite.domain.repository.RequestRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
@@ -47,12 +51,19 @@ interface WorkspaceImporter {
         jsonContent: String,
         strategy: ImportStrategy = ImportStrategy.CREATE_NEW
     ): WorkspaceImportResult
+
+    suspend fun importPostmanCollection(
+        jsonContent: String,
+        strategy: ImportStrategy = ImportStrategy.CREATE_NEW
+    ): WorkspaceImportResult
 }
 
 class WorkspaceExportImportManager(
     private val collectionRepository: CollectionRepository,
     private val requestRepository: RequestRepository,
     private val environmentRepository: EnvironmentRepository,
+    private val folderRepository: FolderRepository? = null,
+    private val postmanParser: PostmanCollectionParser = PostmanCollectionParserImpl(),
     private val json: Json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
@@ -126,6 +137,9 @@ class WorkspaceExportImportManager(
         val exportDto = try {
             json.decodeFromString<WorkspaceExportDto>(jsonContent)
         } catch (e: Exception) {
+            if (jsonContent.contains("\"info\"") && jsonContent.contains("\"item\"")) {
+                return importPostmanCollection(jsonContent, strategy)
+            }
             return WorkspaceImportResult.Error("Invalid JSON structure: ${e.message}")
         }
 
@@ -283,6 +297,110 @@ class WorkspaceExportImportManager(
             environmentsImported = environmentsCount,
             warnings = warnings
         )
+    }
+
+    override suspend fun importPostmanCollection(
+        jsonContent: String,
+        strategy: ImportStrategy
+    ): WorkspaceImportResult {
+        if (jsonContent.isBlank()) {
+            return WorkspaceImportResult.Error("Import content cannot be empty")
+        }
+
+        when (val parseResult = postmanParser.parse(jsonContent)) {
+            is PostmanParseResult.Error -> return WorkspaceImportResult.Error(parseResult.message)
+            is PostmanParseResult.Success -> {
+                val collection = parseResult.collection
+                val folders = parseResult.folders
+                val requests = parseResult.requests
+
+                val existingCollections = collectionRepository.getAllCollections().first().associateBy { it.id }
+                val targetCollectionId: String
+                val shouldInsertCollection: Boolean
+
+                when (strategy) {
+                    ImportStrategy.CREATE_NEW -> {
+                        targetCollectionId = if (existingCollections.containsKey(collection.id)) {
+                            "col_imp_${collection.id}_${collection.createdAt}"
+                        } else {
+                            collection.id
+                        }
+                        shouldInsertCollection = true
+                    }
+                    ImportStrategy.OVERWRITE_EXISTING -> {
+                        targetCollectionId = collection.id
+                        shouldInsertCollection = true
+                    }
+                    ImportStrategy.SKIP_EXISTING -> {
+                        if (existingCollections.containsKey(collection.id)) {
+                            targetCollectionId = collection.id
+                            shouldInsertCollection = false
+                        } else {
+                            targetCollectionId = collection.id
+                            shouldInsertCollection = true
+                        }
+                    }
+                }
+
+                if (strategy == ImportStrategy.SKIP_EXISTING && !shouldInsertCollection) {
+                    return WorkspaceImportResult.Success(
+                        collectionsImported = 0,
+                        requestsImported = 0,
+                        environmentsImported = 0,
+                        warnings = listOf("Collection '${collection.name}' already exists and was skipped")
+                    )
+                }
+
+                if (shouldInsertCollection) {
+                    val finalCollection = if (targetCollectionId != collection.id) {
+                        collection.copy(id = targetCollectionId)
+                    } else {
+                        collection
+                    }
+                    if (existingCollections.containsKey(targetCollectionId)) {
+                        collectionRepository.updateCollection(finalCollection)
+                    } else {
+                        collectionRepository.insertCollection(finalCollection)
+                    }
+                }
+
+                val folderIdMap = mutableMapOf<String, String>()
+                for (folder in folders) {
+                    val newFolderId = if (targetCollectionId != collection.id) {
+                        "fld_imp_${folder.id}_${folder.createdAt}"
+                    } else {
+                        folder.id
+                    }
+                    folderIdMap[folder.id] = newFolderId
+                }
+
+                for (folder in folders) {
+                    val remappedParentId = folder.parentFolderId?.let { folderIdMap[it] ?: it }
+                    val finalFolder = folder.copy(
+                        id = folderIdMap[folder.id] ?: folder.id,
+                        collectionId = targetCollectionId,
+                        parentFolderId = remappedParentId
+                    )
+                    folderRepository?.insertFolder(finalFolder)
+                }
+
+                for (request in requests) {
+                    val remappedFolderId = request.folderId?.let { folderIdMap[it] ?: it }
+                    val finalRequest = request.copy(
+                        collectionId = targetCollectionId,
+                        folderId = remappedFolderId
+                    )
+                    requestRepository.insertRequest(finalRequest)
+                }
+
+                return WorkspaceImportResult.Success(
+                    collectionsImported = 1,
+                    requestsImported = requests.size,
+                    environmentsImported = 0,
+                    warnings = parseResult.warnings
+                )
+            }
+        }
     }
 
     private fun Collection.toExportDto(requests: List<Request>): ExportCollectionDto {

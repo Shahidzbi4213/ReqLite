@@ -3,11 +3,13 @@ import SwiftUI
 import Shared
 
 public typealias ReqLiteEnvironment = Shared.Environment
+public typealias ReqLiteCollection = Shared.Collection
+public typealias ReqLiteRequest = Shared.Request
 
 enum ExecutionState {
     case idle
     case loading
-    case success(HistoryEntry, String)
+    case success(HistoryEntry, String, [String: String])
     case error(String)
 }
 
@@ -21,6 +23,13 @@ class WorkspaceViewModel: ObservableObject {
     @Published var showProtectedWarning: Bool = false
     @Published var selectedTab: RequestTab = .params
     @Published var responseTab: ResponseTab = .pretty
+
+    @Published var collections: [ReqLiteCollection] = []
+    @Published var requests: [ReqLiteRequest] = []
+    @Published var expandedCollectionIds: Set<String> = []
+    @Published var showingSaveCollectionSheet: Bool = false
+    @Published var showingNewCollectionAlert: Bool = false
+    @Published var showingImportPostmanSheet: Bool = false
 
     struct KeyValueItem: Identifiable, Equatable {
         let id = UUID()
@@ -67,6 +76,8 @@ class WorkspaceViewModel: ObservableObject {
         self.adapter = IosWorkspaceAdapter()
         observeEnvironments()
         observeHistory()
+        observeCollections()
+        observeRequests()
     }
 
     deinit {
@@ -89,6 +100,83 @@ class WorkspaceViewModel: ObservableObject {
             Task { @MainActor in
                 self?.historyEntries = entries
             }
+        }
+    }
+
+    private func observeCollections() {
+        adapter?.observeCollections { [weak self] list in
+            Task { @MainActor in
+                self?.collections = list
+            }
+        }
+    }
+
+    private func observeRequests() {
+        adapter?.observeRequests { [weak self] list in
+            Task { @MainActor in
+                self?.requests = list
+            }
+        }
+    }
+
+    func requestsForCollection(_ collectionId: String) -> [ReqLiteRequest] {
+        return requests.filter { $0.collectionId == collectionId }
+    }
+
+    func createCollection(name: String, description: String? = nil, completion: ((ReqLiteCollection) -> Void)? = nil) {
+        adapter?.createCollection(name: name, description: description) { col in
+            Task { @MainActor in
+                completion?(col)
+            }
+        }
+    }
+
+    func deleteCollection(_ id: String) {
+        adapter?.deleteCollection(id: id)
+    }
+
+    func deleteRequest(_ id: String) {
+        adapter?.deleteRequest(id: id)
+    }
+
+    func saveCurrentRequestToCollection(collectionId: String, name: String) {
+        guard let adapter = self.adapter else { return }
+        let headersList = headers.map { item in
+            adapter.createRequestField(key: item.key, value: item.value, isEnabled: item.isEnabled)
+        }
+        let queryParamsList = queryParams.map { item in
+            adapter.createRequestField(key: item.key, value: item.value, isEnabled: item.isEnabled)
+        }
+        let body = requestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : requestBody
+
+        adapter.saveRequestToCollection(
+            collectionId: collectionId,
+            name: name,
+            methodName: method,
+            url: url,
+            headers: headersList,
+            queryParams: queryParamsList,
+            bodyContent: body
+        ) { _ in
+            Task { @MainActor in
+                self.showingSaveCollectionSheet = false
+            }
+        }
+    }
+
+    func loadSavedRequest(_ req: ReqLiteRequest) {
+        self.method = req.method.name
+        self.url = req.url
+        self.queryParams = req.queryParams.map { field in
+            KeyValueItem(key: field.key, value: field.value, isEnabled: field.isEnabled)
+        }
+        self.headers = req.headers.map { field in
+            KeyValueItem(key: field.key, value: field.value, isEnabled: field.isEnabled)
+        }
+        if let adapter = self.adapter {
+            self.requestBody = adapter.extractRequestBodyText(request: req)
+        } else {
+            self.requestBody = ""
         }
     }
 
@@ -219,7 +307,7 @@ class WorkspaceViewModel: ObservableObject {
                         if state is IosExecutionState.Loading {
                             self.executionState = .loading
                         } else if let success = state as? IosExecutionState.Success {
-                            self.executionState = .success(success.result, success.responseBody)
+                            self.executionState = .success(success.result, success.responseBody, success.responseHeaders)
                         } else if let err = state as? IosExecutionState.Error {
                             self.executionState = .error(err.message)
                         } else {
@@ -231,11 +319,95 @@ class WorkspaceViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func applySmartPayload(_ input: String) -> Bool {
+        guard let adapter = adapter else { return false }
+        let result = adapter.parseSmartPayload(rawInput: input)
+        
+        switch result.type {
+        case "config":
+            self.url = result.url
+            self.method = result.method
+            if !result.queryParams.isEmpty {
+                self.queryParams = result.queryParams.map { KeyValueItem(key: $0.key, value: $0.value, isEnabled: $0.isEnabled) }
+            }
+            if !result.headers.isEmpty {
+                self.headers = result.headers.map { KeyValueItem(key: $0.key, value: $0.value, isEnabled: $0.isEnabled) }
+            }
+            if let body = result.bodyContent {
+                self.requestBody = body
+                self.selectedTab = .body
+            }
+            if let token = result.bearerToken {
+                self.authType = "Bearer Token"
+                self.authToken = token
+            }
+            return true
+            
+        case "auth":
+            if let token = result.bearerToken {
+                self.authType = "Bearer Token"
+                self.authToken = token
+                self.selectedTab = .auth
+                return true
+            }
+            return false
+            
+        case "url":
+            self.url = result.url
+            return true
+            
+        default:
+            return false
+        }
+    }
+
+    @discardableResult
+    func applyCurl(_ curlCommand: String) -> Bool {
+        return applySmartPayload(curlCommand)
+    }
+
     func cancelExecution() {
         adapter?.cancelExecution { [weak self] _ in
             Task { @MainActor in
                 self?.executionState = .idle
             }
         }
+    }
+
+    func previewPostmanCollection(_ json: String, completion: @escaping (String?, Int, Int, String?) -> Void) {
+        guard let adapter = adapter else {
+            completion(nil, 0, 0, "Adapter unavailable")
+            return
+        }
+        adapter.previewPostmanCollection(
+            jsonContent: json,
+            onSuccess: { name, reqs, folders in
+                completion(name, Int(truncating: reqs), Int(truncating: folders), nil)
+            },
+            onError: { errorMsg in
+                completion(nil, 0, 0, errorMsg)
+            }
+        )
+    }
+
+    func importPostmanCollection(_ json: String, completion: @escaping (Bool, String) -> Void) {
+        guard let adapter = adapter else {
+            completion(false, "Adapter unavailable")
+            return
+        }
+        adapter.importPostmanCollection(
+            jsonContent: json,
+            onSuccess: { name, reqs in
+                Task { @MainActor in
+                    completion(true, "Successfully imported \(reqs) requests into \(name)")
+                }
+            },
+            onError: { errorMsg in
+                Task { @MainActor in
+                    completion(false, errorMsg)
+                }
+            }
+        )
     }
 }

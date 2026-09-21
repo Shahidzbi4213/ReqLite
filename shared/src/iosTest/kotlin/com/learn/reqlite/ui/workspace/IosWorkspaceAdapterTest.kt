@@ -8,6 +8,7 @@ import com.learn.reqlite.domain.repository.RequestRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -21,6 +22,7 @@ class IosWorkspaceAdapterTest {
     private lateinit var fakeEnvRepo: FakeEnvRepo
     private lateinit var fakeReqRepo: FakeReqRepo
     private lateinit var fakeHistoryRepo: FakeHistoryRepo
+    private lateinit var fakeColRepo: FakeColRepo
     private lateinit var adapter: IosWorkspaceAdapter
 
     @BeforeTest
@@ -29,11 +31,13 @@ class IosWorkspaceAdapterTest {
         fakeEnvRepo = FakeEnvRepo()
         fakeReqRepo = FakeReqRepo()
         fakeHistoryRepo = FakeHistoryRepo()
+        fakeColRepo = FakeColRepo()
         adapter = IosWorkspaceAdapter(
             executionEngine = fakeEngine,
             environmentRepository = fakeEnvRepo,
             requestRepository = fakeReqRepo,
             historyRepository = fakeHistoryRepo,
+            collectionRepository = fakeColRepo,
             scope = CoroutineScope(testDispatcher)
         )
     }
@@ -41,6 +45,82 @@ class IosWorkspaceAdapterTest {
     @AfterTest
     fun tearDown() {
         adapter.close()
+    }
+
+    @Test
+    fun adapter_managesCollections_and_savesRequests() = runTest {
+        var createdCollection: Collection? = null
+        adapter.createCollection(name = "Test API", description = "My test collection") { col ->
+            createdCollection = col
+        }
+
+        assertNotNull(createdCollection)
+        assertEquals("Test API", createdCollection.name)
+
+        var savedRequest: Request? = null
+        adapter.saveRequestToCollection(
+            collectionId = createdCollection.id,
+            name = "Get Users",
+            methodName = "GET",
+            url = "https://api.example.com/users"
+        ) { req ->
+            savedRequest = req
+        }
+
+        assertNotNull(savedRequest)
+        assertEquals("Get Users", savedRequest.name)
+        assertEquals(createdCollection.id, savedRequest.collectionId)
+        assertEquals(HttpMethod.GET, savedRequest.method)
+
+        val retrievedReq = fakeReqRepo.getRequestById(savedRequest.id)
+        assertNotNull(retrievedReq)
+    }
+
+    @Test
+    fun adapter_previewsAndImports_postmanCollection() = runTest {
+        val postmanJson = """
+        {
+          "info": {
+            "name": "iOS Test Collection",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Quick Ping",
+              "request": {
+                "method": "GET",
+                "url": "https://api.example.com/ping"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        var previewName: String? = null
+        var previewRequests: Int = 0
+        adapter.previewPostmanCollection(
+            jsonContent = postmanJson,
+            onSuccess = { name, reqs, _ ->
+                previewName = name
+                previewRequests = reqs
+            },
+            onError = { }
+        )
+
+        assertEquals("iOS Test Collection", previewName)
+        assertEquals(1, previewRequests)
+
+        var importSuccess = false
+        adapter.importPostmanCollection(
+            jsonContent = postmanJson,
+            onSuccess = { _, _ ->
+                importSuccess = true
+            },
+            onError = { }
+        )
+
+        val allCollections = fakeColRepo.getAllCollections().first()
+        assertTrue(allCollections.any { it.name == "iOS Test Collection" })
     }
 
     @Test
@@ -184,5 +264,25 @@ class IosWorkspaceAdapterTest {
         override suspend fun clearHistory() {
             historyEntries.clear()
         }
+    }
+
+    class FakeColRepo : com.learn.reqlite.domain.repository.CollectionRepository {
+        private val collections = mutableMapOf<String, Collection>()
+
+        override suspend fun insertCollection(collection: Collection) {
+            collections[collection.id] = collection
+        }
+
+        override suspend fun updateCollection(collection: Collection) {
+            collections[collection.id] = collection
+        }
+
+        override suspend fun deleteCollection(collection: Collection) {
+            collections.remove(collection.id)
+        }
+
+        override fun getAllCollections(): Flow<List<Collection>> = flowOf(collections.values.toList())
+
+        override suspend fun getCollectionById(id: String): Collection? = collections[id]
     }
 }

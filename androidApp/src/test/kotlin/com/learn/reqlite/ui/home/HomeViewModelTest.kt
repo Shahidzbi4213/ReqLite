@@ -28,6 +28,7 @@ class HomeViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var fakeHistoryRepo: FakeHistoryRepository
     private lateinit var fakeRequestRepo: FakeRequestRepository
+    private lateinit var fakeCollectionRepo: FakeCollectionRepository
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -35,12 +36,58 @@ class HomeViewModelTest {
         Dispatchers.setMain(testDispatcher)
         fakeHistoryRepo = FakeHistoryRepository()
         fakeRequestRepo = FakeRequestRepository()
-        viewModel = HomeViewModel(fakeHistoryRepo, fakeRequestRepo)
+        fakeCollectionRepo = FakeCollectionRepository()
+        viewModel = HomeViewModel(fakeHistoryRepo, fakeRequestRepo, fakeCollectionRepo)
     }
 
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun collections_observesCollectionRepository() = runTest {
+        val col = com.learn.reqlite.domain.model.Collection(
+            id = "c1",
+            name = "Auth APIs",
+            description = "Auth endpoints",
+            createdAt = 1000L,
+            updatedAt = 1000L
+        )
+        fakeCollectionRepo.insertCollection(col)
+        assertEquals(1, viewModel.collections.value.size)
+        assertEquals("Auth APIs", viewModel.collections.value.first().name)
+    }
+
+    @Test
+    fun createCollection_insertsCollection() = runTest {
+        viewModel.createCollection(name = "Payment APIs", description = "Payments")
+        assertEquals(1, viewModel.collections.value.size)
+        assertEquals("Payment APIs", viewModel.collections.value.first().name)
+    }
+
+    @Test
+    fun openSavedRequest_createsDraftAndCallsComplete() = runTest {
+        val request = Request(
+            id = "req_1",
+            collectionId = "c1",
+            name = "Get Profile",
+            method = HttpMethod.GET,
+            url = "https://api.example.com/profile",
+            createdAt = 1000L,
+            updatedAt = 1000L
+        )
+
+        var loadedDraftId: String? = null
+        viewModel.openSavedRequest(request) { draftId ->
+            loadedDraftId = draftId
+        }
+
+        assertEquals(1, viewModel.drafts.value.size)
+        val draft = viewModel.drafts.value.first()
+        assertEquals(loadedDraftId, draft.id)
+        assertEquals("https://api.example.com/profile", draft.url)
+        assertEquals(request.id, draft.requestId)
     }
 
     @Test
@@ -110,6 +157,38 @@ class HomeViewModelTest {
         assertEquals(0, viewModel.drafts.value.size)
     }
 
+    @Test
+    fun importPostmanCollection_insertsCollectionAndRequests() = runTest {
+        val postmanJson = """
+        {
+          "info": {
+            "name": "Imported Test API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Test Endpoint",
+              "request": {
+                "method": "POST",
+                "url": "https://api.test.com/v1"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        var importedCount = 0
+        viewModel.importPostmanCollection(postmanJson) { result ->
+            importedCount = result.getOrNull() ?: 0
+        }
+
+        assertEquals(1, importedCount)
+        assertEquals(1, viewModel.collections.value.size)
+        assertEquals("Imported Test API", viewModel.collections.value.first().name)
+        assertEquals(1, viewModel.savedRequests.value.size)
+        assertEquals("Test Endpoint", viewModel.savedRequests.value.first().name)
+    }
+
     class FakeHistoryRepository : HistoryRepository {
         private val entries = MutableStateFlow<List<HistoryEntry>>(emptyList())
 
@@ -121,6 +200,7 @@ class HomeViewModelTest {
         override fun getAllHistoryEntries(): Flow<List<HistoryEntry>> = entries.asStateFlow()
         override fun getHistoryForRequest(requestId: String): Flow<List<HistoryEntry>> = entries.asStateFlow()
         override suspend fun getResponseArtifactById(id: String): ResponseArtifact? = null
+        override suspend fun getHistoryEntryById(id: String): HistoryEntry? = entries.value.find { it.id == id }
         override suspend fun deleteHistoryEntry(id: String) {
             entries.value = entries.value.filter { it.id != id }
         }
@@ -153,5 +233,26 @@ class HomeViewModelTest {
         override suspend fun deleteDraft(id: String) {
             drafts.value = drafts.value.filter { it.id != id }
         }
+    }
+
+    class FakeCollectionRepository : com.learn.reqlite.domain.repository.CollectionRepository {
+        private val collections = MutableStateFlow<List<com.learn.reqlite.domain.model.Collection>>(emptyList())
+
+        override suspend fun insertCollection(collection: com.learn.reqlite.domain.model.Collection) {
+            collections.value = collections.value.filter { it.id != collection.id } + collection
+        }
+
+        override suspend fun updateCollection(collection: com.learn.reqlite.domain.model.Collection) {
+            collections.value = collections.value.filter { it.id != collection.id } + collection
+        }
+
+        override suspend fun deleteCollection(collection: com.learn.reqlite.domain.model.Collection) {
+            collections.value = collections.value.filter { it.id != collection.id }
+        }
+
+        override fun getAllCollections(): Flow<List<com.learn.reqlite.domain.model.Collection>> = collections.asStateFlow()
+
+        override suspend fun getCollectionById(id: String): com.learn.reqlite.domain.model.Collection? =
+            collections.value.find { it.id == id }
     }
 }

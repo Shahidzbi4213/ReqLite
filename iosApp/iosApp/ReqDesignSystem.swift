@@ -741,17 +741,20 @@ struct ReqGlassButton: View {
 struct ReqBottomActionBar: View {
     let executionState: ExecutionState
     let onQRScan: () -> Void
+    var onPasteCurl: (() -> Void)? = nil
     let onSend: () -> Void
     let onCancel: () -> Void
 
     init(
         executionState: ExecutionState,
         onQRScan: @escaping () -> Void,
+        onPasteCurl: (() -> Void)? = nil,
         onSend: @escaping () -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.executionState = executionState
         self.onQRScan = onQRScan
+        self.onPasteCurl = onPasteCurl
         self.onSend = onSend
         self.onCancel = onCancel
     }
@@ -762,12 +765,19 @@ struct ReqBottomActionBar: View {
     }
 
     var body: some View {
-        HStack(spacing: ReqTokens.Spacing.sm) {
+        HStack(spacing: ReqTokens.Spacing.xs) {
             // Secondary Action: QR Scanner (Subtle, quiet glass)
             ReqGlassIconButton(icon: "qrcode.viewfinder", size: ReqTokens.Height.control) {
                 onQRScan()
             }
             .accessibilityLabel("Scan URL QR Code")
+
+            if let onPasteCurl = onPasteCurl {
+                ReqGlassIconButton(icon: "terminal", size: ReqTokens.Height.control) {
+                    onPasteCurl()
+                }
+                .accessibilityLabel("Paste cURL")
+            }
 
             Spacer()
 
