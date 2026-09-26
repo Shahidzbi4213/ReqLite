@@ -46,6 +46,9 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.learn.reqlite.domain.model.Collection
 import com.learn.reqlite.domain.model.Request
 import com.learn.reqlite.domain.model.Variable
@@ -108,6 +111,7 @@ fun HomeScreen(
                 }
             }
         },
+        onParsePostmanCollection = { json -> viewModel.parsePostmanCollection(json) },
         modifier = modifier
     )
 }
@@ -126,6 +130,11 @@ fun HomeScreenContent(
     onDeleteRequest: (String) -> Unit = {},
     onOpenSavedRequest: (Request) -> Unit = {},
     onImportPostmanCollection: (String, List<Variable>?) -> Unit = { _, _ -> },
+    onParsePostmanCollection: suspend (String) -> PostmanParseResult = { json ->
+        withContext(Dispatchers.Default) {
+            PostmanCollectionParserImpl().parse(json)
+        }
+    },
     modifier: Modifier = Modifier
 ) {
     var quickUrl by remember { mutableStateOf("") }
@@ -377,7 +386,8 @@ fun HomeScreenContent(
                 onImport = { json, customVars ->
                     showImportPostmanDialog = false
                     onImportPostmanCollection(json, customVars)
-                }
+                },
+                onParseJson = onParsePostmanCollection
             )
         }
     }
@@ -387,7 +397,12 @@ fun HomeScreenContent(
 fun ImportPostmanDialog(
     onDismiss: () -> Unit,
     onImport: (jsonContent: String, variables: List<Variable>?) -> Unit,
-    initialJson: String? = null
+    initialJson: String? = null,
+    onParseJson: suspend (String) -> PostmanParseResult = { json ->
+        withContext(Dispatchers.Default) {
+            PostmanCollectionParserImpl().parse(json)
+        }
+    }
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var jsonText by remember { mutableStateOf(initialJson ?: "") }
@@ -398,39 +413,36 @@ fun ImportPostmanDialog(
 
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            try {
-                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                if (!content.isNullOrBlank()) {
-                    jsonText = content
-                    selectedFileName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
-                    Toast.makeText(context, "Loaded collection file", Toast.LENGTH_SHORT).show()
+            coroutineScope.launch {
+                try {
+                    val content = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    }
+                    if (!content.isNullOrBlank()) {
+                        jsonText = content
+                        selectedFileName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
+                        Toast.makeText(context, "Loaded collection file", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to read file: ${e.message}", Toast.LENGTH_LONG).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to read file: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
     LaunchedEffect(jsonText) {
         if (jsonText.isNotBlank()) {
-            val parser = PostmanCollectionParserImpl()
-            val res = parser.parse(jsonText)
+            val res = onParseJson(jsonText)
             parseResult = res
             if (res is PostmanParseResult.Success) {
                 editedVariables.clear()
                 res.variables.forEach { v ->
-                    val defaultVal = if (v.value.isNotBlank()) {
-                        v.value
-                    } else if (v.key.equals("url", ignoreCase = true) && res.collection.name.contains("tebyan", ignoreCase = true)) {
-                        "https://api.tebyan.com"
-                    } else {
-                        v.value
-                    }
-                    editedVariables[v.key] = defaultVal
+                    editedVariables[v.key] = v.value
                 }
             }
         } else {
@@ -844,30 +856,17 @@ fun ImportPostmanDialog(
                                                     modifier = Modifier.weight(1f)
                                                 )
                                                 if (currentValue.isBlank()) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    Surface(
+                                                        shape = PillShape,
+                                                        color = MaterialTheme.colorScheme.errorContainer
                                                     ) {
-                                                        if (variable.key == "url") {
-                                                            TextButton(
-                                                                onClick = { editedVariables[variable.key] = "https://api.tebyan.com" },
-                                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                                                            ) {
-                                                                Text("Fill Tebyan URL", style = MaterialTheme.typography.labelSmall)
-                                                            }
-                                                        }
-                                                        Surface(
-                                                            shape = PillShape,
-                                                            color = MaterialTheme.colorScheme.errorContainer
-                                                        ) {
-                                                            Text(
-                                                                text = "Value Needed",
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                                                fontSize = 10.sp,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                                                            )
-                                                        }
+                                                        Text(
+                                                            text = "Value Needed",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                                            fontSize = 10.sp,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                                        )
                                                     }
                                                 }
                                             }
@@ -879,7 +878,7 @@ fun ImportPostmanDialog(
                                                 },
                                                 placeholder = {
                                                     Text(
-                                                        text = if (variable.key == "url") "https://api.tebyan.com" else "Enter variable value",
+                                                        text = "Enter variable value",
                                                         style = MaterialTheme.typography.bodySmall
                                                     )
                                                 },

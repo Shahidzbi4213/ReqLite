@@ -347,4 +347,85 @@ class PostmanCollectionParserTest {
         assertTrue(varKeys.contains("token"))
         assertTrue(varKeys.contains("clientId"))
     }
+
+    @Test
+    fun parse_variables_generateUniqueIdsAcrossImports() {
+        val json = """
+        {
+          "info": {
+            "name": "Unique Var IDs API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [],
+          "variable": [
+            { "key": "baseUrl", "value": "https://api.com" }
+          ]
+        }
+        """.trimIndent()
+
+        val parser1 = PostmanCollectionParserImpl()
+        val parser2 = PostmanCollectionParserImpl()
+
+        val result1 = parser1.parse(json) as PostmanParseResult.Success
+        val result2 = parser2.parse(json) as PostmanParseResult.Success
+
+        val id1 = result1.variables.first().id
+        val id2 = result2.variables.first().id
+
+        kotlin.test.assertNotEquals(id1, id2)
+    }
+
+    @Test
+    fun parse_variables_deduplicatesKeys() {
+        val json = """
+        {
+          "info": {
+            "name": "Dedupe API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [],
+          "variable": [
+            { "key": "env", "value": "dev", "disabled": true },
+            { "key": "env", "value": "prod", "disabled": false }
+          ]
+        }
+        """.trimIndent()
+
+        val result = parser.parse(json) as PostmanParseResult.Success
+        val envVars = result.variables.filter { it.key == "env" }
+        assertEquals(1, envVars.size)
+        assertEquals("prod", envVars.first().value)
+        assertTrue(envVars.first().isEnabled)
+    }
+
+    @Test
+    fun parse_variables_matchesFlexibleKeyNames() {
+        val json = """
+        {
+          "info": {
+            "name": "Flexible Keys API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Request with varied tokens",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "X-Auth", "value": "{{auth:token}}" }
+                ],
+                "url": "{{ baseUrl }}/items/{{item.id}}"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val result = parser.parse(json) as PostmanParseResult.Success
+        val varKeys = result.variables.map { it.key }.toSet()
+
+        assertTrue(varKeys.contains("auth:token"))
+        assertTrue(varKeys.contains("baseUrl"))
+        assertTrue(varKeys.contains("item.id"))
+    }
 }

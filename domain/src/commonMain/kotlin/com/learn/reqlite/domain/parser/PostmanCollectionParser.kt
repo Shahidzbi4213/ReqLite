@@ -7,6 +7,8 @@ import com.learn.reqlite.domain.model.Request
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
 import com.learn.reqlite.domain.model.Variable
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -95,7 +97,7 @@ class PostmanCollectionParserImpl(
             warnings = warnings
         )
 
-        val explicitVariables = mutableListOf<Variable>()
+        val explicitVariablesMap = LinkedHashMap<String, Variable>()
         val variableArray = rootObj["variable"] as? JsonArray
         if (variableArray != null) {
             for (element in variableArray) {
@@ -104,22 +106,23 @@ class PostmanCollectionParserImpl(
                 if (key.isBlank()) continue
                 val value = varObj["value"].asString() ?: ""
                 val disabled = varObj["disabled"].asBoolean() ?: false
-                val varId = varObj["id"].asString()?.trim()?.ifBlank { null }
-                    ?: "var_pm_${1000L + idCounter++}"
-                explicitVariables.add(
-                    Variable(
-                        id = varId,
+                val isEnabled = !disabled
+                val existing = explicitVariablesMap[key]
+                if (existing == null || (!existing.isEnabled && isEnabled) || (existing.isEnabled == isEnabled)) {
+                    explicitVariablesMap[key] = Variable(
+                        id = generateVariableId(),
                         key = key,
                         value = value,
-                        isEnabled = !disabled,
+                        isEnabled = isEnabled,
                         isSecret = false
                     )
-                )
+                }
             }
         }
+        val explicitVariables = explicitVariablesMap.values.toList()
 
         val detectedKeys = mutableSetOf<String>()
-        val variableRegex = Regex("""\{\{([a-zA-Z0-9_.-]+)\}\}""")
+        val variableRegex = Regex("""\{\{([^}]+)\}\}""")
 
         fun scanText(text: String?) {
             if (text.isNullOrBlank()) return
@@ -161,7 +164,7 @@ class PostmanCollectionParserImpl(
             if (detectedKey !in explicitKeys) {
                 allVariables.add(
                     Variable(
-                        id = "var_pm_${1000L + idCounter++}",
+                        id = generateVariableId(),
                         key = detectedKey,
                         value = "",
                         isEnabled = true,
@@ -591,4 +594,7 @@ class PostmanCollectionParserImpl(
     private fun JsonElement?.asBoolean(): Boolean? {
         return (this as? JsonPrimitive)?.booleanOrNull
     }
+
+    @OptIn(ExperimentalUuidApi::class)
+    private fun generateVariableId(): String = "var_pm_${Uuid.random()}"
 }

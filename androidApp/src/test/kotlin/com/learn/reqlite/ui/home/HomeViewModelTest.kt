@@ -189,6 +189,33 @@ class HomeViewModelTest {
         assertEquals("Test Endpoint", viewModel.savedRequests.value.first().name)
     }
 
+    @Test
+    fun parsePostmanCollection_returnsSuccessResult() = runTest {
+        val postmanJson = """
+        {
+          "info": {
+            "name": "Parsed API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Endpoint",
+              "request": {
+                "method": "GET",
+                "url": "https://api.test.com"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val result = viewModel.parsePostmanCollection(postmanJson)
+        org.junit.Assert.assertTrue(result is com.learn.reqlite.domain.parser.PostmanParseResult.Success)
+        val success = result as com.learn.reqlite.domain.parser.PostmanParseResult.Success
+        assertEquals("Parsed API", success.collection.name)
+        assertEquals(1, success.requests.size)
+    }
+
     class FakeHistoryRepository : HistoryRepository {
         private val entries = MutableStateFlow<List<HistoryEntry>>(emptyList())
 

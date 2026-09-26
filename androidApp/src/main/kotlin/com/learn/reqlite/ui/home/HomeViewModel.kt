@@ -10,11 +10,13 @@ import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
 import com.learn.reqlite.utils.common.nowMs
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 import com.learn.reqlite.domain.export.WorkspaceImporter
 import com.learn.reqlite.domain.export.WorkspaceImportResult
@@ -151,8 +153,8 @@ class HomeViewModel(
         }
     }
 
-    fun parsePostmanCollection(jsonContent: String): PostmanParseResult {
-        return postmanParser.parse(jsonContent)
+    suspend fun parsePostmanCollection(jsonContent: String): PostmanParseResult = withContext(Dispatchers.Default) {
+        postmanParser.parse(jsonContent)
     }
 
     fun importPostmanCollection(
