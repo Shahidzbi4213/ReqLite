@@ -214,11 +214,7 @@ fun HomeScreenContent(
                         FilledTonalButton(
                             onClick = { showImportPostmanDialog = true },
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = PillShape,
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = Color(0xFFFF6C37).copy(alpha = 0.15f),
-                                contentColor = Color(0xFFFF6C37)
-                            )
+                            shape = PillShape
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_save_collection),
@@ -452,14 +448,14 @@ fun ImportPostmanDialog(
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFFF6C37).copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             painter = painterResource(R.drawable.ic_save_collection),
                             contentDescription = null,
-                            tint = Color(0xFFFF6C37),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -527,7 +523,7 @@ fun ImportPostmanDialog(
                                 Icon(
                                     painter = painterResource(R.drawable.ic_folder),
                                     contentDescription = null,
-                                    tint = Color(0xFFFF6C37),
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(32.dp)
                                 )
                                 Text(
@@ -606,14 +602,14 @@ fun ImportPostmanDialog(
                                     ) {
                                         Surface(
                                             shape = PillShape,
-                                            color = Color(0xFFFF6C37).copy(alpha = 0.15f)
+                                            color = MaterialTheme.colorScheme.secondaryContainer
                                         ) {
                                             Text(
-                                                text = "Sample 1",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFFFF6C37),
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                 text = "Sample 1",
+                                                 style = MaterialTheme.typography.labelSmall,
+                                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                 fontWeight = FontWeight.Bold,
+                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                             )
                                         }
                                         Text(
@@ -627,15 +623,12 @@ fun ImportPostmanDialog(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Button(
+                                    FilledTonalButton(
                                         onClick = {
                                             jsonText = PostmanSampleCollections.TEBYAN_DUA_API_JSON
                                             selectedFileName = "Tebyan Dua Api (Sample)"
                                         },
                                         shape = PillShape,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFFFF6C37)
-                                        ),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text("Load Tebyan Dua API")
@@ -781,12 +774,12 @@ fun ImportPostmanDialog(
                                     }
                                     Surface(
                                         shape = PillShape,
-                                        color = if (res.variables.isNotEmpty()) Color(0xFFFF6C37).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerHigh
+                                        color = if (res.variables.isNotEmpty()) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
                                     ) {
                                         Text(
                                             text = "${res.variables.size} Variables",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = if (res.variables.isNotEmpty()) Color(0xFFFF6C37) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            color = if (res.variables.isNotEmpty()) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                         )
@@ -847,7 +840,7 @@ fun ImportPostmanDialog(
                                                     text = "{{${variable.key}}}",
                                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFFF6C37),
+                                                    color = MaterialTheme.colorScheme.primary,
                                                     modifier = Modifier.weight(1f)
                                                 )
                                                 if (currentValue.isBlank()) {
@@ -860,7 +853,7 @@ fun ImportPostmanDialog(
                                                                 onClick = { editedVariables[variable.key] = "https://api.tebyan.com" },
                                                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                                                             ) {
-                                                                Text("Fill Tebyan URL", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFF6C37))
+                                                                Text("Fill Tebyan URL", style = MaterialTheme.typography.labelSmall)
                                                             }
                                                         }
                                                         Surface(
@@ -921,9 +914,6 @@ fun ImportPostmanDialog(
                     }
                 },
                 enabled = parseResult is PostmanParseResult.Success,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFF6C37)
-                ),
                 shape = PillShape
             ) {
                 val reqCount = (parseResult as? PostmanParseResult.Success)?.requests?.size ?: 0
@@ -948,7 +938,7 @@ fun PostmanImportSection(
         colors = CardDefaults.outlinedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
-        border = BorderStroke(1.dp, Color(0xFFFF6C37).copy(alpha = 0.35f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
@@ -961,14 +951,14 @@ fun PostmanImportSection(
             ) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFFF6C37).copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(40.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             painter = painterResource(R.drawable.ic_save_collection),
                             contentDescription = null,
-                            tint = Color(0xFFFF6C37),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -987,13 +977,13 @@ fun PostmanImportSection(
                         )
                         Surface(
                             shape = PillShape,
-                            color = Color(0xFFFF6C37).copy(alpha = 0.12f)
+                            color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
                             Text(
                                 text = "v2.1",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFFF6C37),
-                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
                             )
                         }
@@ -1014,9 +1004,6 @@ fun PostmanImportSection(
                 Button(
                     onClick = onImportClick,
                     shape = PillShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF6C37)
-                    ),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Icon(
@@ -1093,11 +1080,7 @@ fun EmptyCollectionsCard(
             ) {
                 FilledTonalButton(
                     onClick = onImportClick,
-                    shape = PillShape,
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFFFF6C37).copy(alpha = 0.15f),
-                        contentColor = Color(0xFFFF6C37)
-                    )
+                    shape = PillShape
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_save_collection),
