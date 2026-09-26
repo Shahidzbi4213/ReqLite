@@ -263,4 +263,88 @@ class PostmanCollectionParserTest {
         val missingInfo = parser.parse("{\"item\": []}")
         assertTrue(missingInfo is PostmanParseResult.Error)
     }
+
+    @Test
+    fun parse_withExplicitVariables_extractsCollectionVariables() {
+        val json = """
+        {
+          "info": {
+            "name": "API with Variables",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Get Info",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/info"
+              }
+            }
+          ],
+          "variable": [
+            {
+              "key": "baseUrl",
+              "value": "https://api.example.com",
+              "type": "string"
+            },
+            {
+              "key": "apiKey",
+              "value": "secret123"
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val result = parser.parse(json)
+        assertTrue(result is PostmanParseResult.Success)
+        assertEquals(2, result.variables.size)
+
+        val baseUrlVar = result.variables.find { it.key == "baseUrl" }
+        assertNotNull(baseUrlVar)
+        assertEquals("https://api.example.com", baseUrlVar.value)
+        assertTrue(baseUrlVar.isEnabled)
+
+        val apiKeyVar = result.variables.find { it.key == "apiKey" }
+        assertNotNull(apiKeyVar)
+        assertEquals("secret123", apiKeyVar.value)
+    }
+
+    @Test
+    fun parse_withReferencedVariablesInUrlAndHeaders_extractsReferencedVariables() {
+        val json = """
+        {
+          "info": {
+            "name": "API with Referenced Vars",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Get Data",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{url}}/v1/data?client={{clientId}}",
+                  "host": ["{{url}}"],
+                  "path": ["v1", "data"],
+                  "query": [
+                    { "key": "client", "value": "{{clientId}}" }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val result = parser.parse(json)
+        assertTrue(result is PostmanParseResult.Success)
+        val varKeys = result.variables.map { it.key }.toSet()
+
+        assertTrue(varKeys.contains("url"))
+        assertTrue(varKeys.contains("token"))
+        assertTrue(varKeys.contains("clientId"))
+    }
 }

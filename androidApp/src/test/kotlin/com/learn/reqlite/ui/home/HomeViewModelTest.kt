@@ -179,7 +179,7 @@ class HomeViewModelTest {
 
         var importedCount = 0
         viewModel.importPostmanCollection(postmanJson) { result ->
-            importedCount = result.getOrNull() ?: 0
+            importedCount = result.getOrNull()?.requestsImported ?: 0
         }
 
         assertEquals(1, importedCount)

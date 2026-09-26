@@ -22,26 +22,35 @@ import com.learn.reqlite.domain.parser.PostmanCollectionParser
 import com.learn.reqlite.domain.parser.PostmanCollectionParserImpl
 import com.learn.reqlite.domain.parser.PostmanParseResult
 
+import com.learn.reqlite.domain.model.Variable
+import com.learn.reqlite.domain.repository.EnvironmentRepository
+
 class HomeViewModel(
     private val historyRepository: HistoryRepository,
     private val requestRepository: RequestRepository,
     private val collectionRepository: CollectionRepository? = null,
     private val workspaceImporter: WorkspaceImporter? = null,
-    private val postmanParser: PostmanCollectionParser = PostmanCollectionParserImpl()
+    private val postmanParser: PostmanCollectionParser = PostmanCollectionParserImpl(),
+    private val environmentRepository: EnvironmentRepository? = null
 ) : ViewModel() {
 
     private val effectiveImporter: WorkspaceImporter? by lazy {
         workspaceImporter ?: collectionRepository?.let { colRepo ->
+            val envRepo = environmentRepository ?: object : EnvironmentRepository {
+                private val envs = mutableListOf<com.learn.reqlite.domain.model.Environment>()
+                override fun getAllEnvironments() = kotlinx.coroutines.flow.flowOf(envs.toList())
+                override suspend fun getEnvironmentById(id: String) = envs.find { it.id == id }
+                override suspend fun insertEnvironment(environment: com.learn.reqlite.domain.model.Environment) { envs.add(environment) }
+                override suspend fun updateEnvironment(environment: com.learn.reqlite.domain.model.Environment) {
+                    envs.removeAll { it.id == environment.id }
+                    envs.add(environment)
+                }
+                override suspend fun deleteEnvironment(id: String) { envs.removeAll { it.id == id } }
+            }
             com.learn.reqlite.domain.export.WorkspaceExportImportManager(
                 collectionRepository = colRepo,
                 requestRepository = requestRepository,
-                environmentRepository = object : com.learn.reqlite.domain.repository.EnvironmentRepository {
-                    override fun getAllEnvironments() = kotlinx.coroutines.flow.flowOf(emptyList<com.learn.reqlite.domain.model.Environment>())
-                    override suspend fun getEnvironmentById(id: String) = null
-                    override suspend fun insertEnvironment(environment: com.learn.reqlite.domain.model.Environment) {}
-                    override suspend fun updateEnvironment(environment: com.learn.reqlite.domain.model.Environment) {}
-                    override suspend fun deleteEnvironment(id: String) {}
-                },
+                environmentRepository = envRepo,
                 postmanParser = postmanParser
             )
         }
@@ -142,16 +151,21 @@ class HomeViewModel(
         }
     }
 
+    fun parsePostmanCollection(jsonContent: String): PostmanParseResult {
+        return postmanParser.parse(jsonContent)
+    }
+
     fun importPostmanCollection(
         jsonContent: String,
-        onComplete: (Result<Int>) -> Unit
+        customVariables: List<Variable>? = null,
+        onComplete: (Result<WorkspaceImportResult.Success>) -> Unit
     ) {
         viewModelScope.launch {
             try {
                 val importer = effectiveImporter
                 if (importer != null) {
-                    when (val res = importer.importPostmanCollection(jsonContent)) {
-                        is WorkspaceImportResult.Success -> onComplete(Result.success(res.requestsImported))
+                    when (val res = importer.importPostmanCollection(jsonContent, customVariables)) {
+                        is WorkspaceImportResult.Success -> onComplete(Result.success(res))
                         is WorkspaceImportResult.Error -> onComplete(Result.failure(Exception(res.message)))
                     }
                 } else {
