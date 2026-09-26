@@ -56,6 +56,12 @@ interface WorkspaceImporter {
         jsonContent: String,
         strategy: ImportStrategy = ImportStrategy.CREATE_NEW
     ): WorkspaceImportResult
+
+    suspend fun importPostmanCollection(
+        jsonContent: String,
+        customVariables: List<Variable>?,
+        strategy: ImportStrategy = ImportStrategy.CREATE_NEW
+    ): WorkspaceImportResult = importPostmanCollection(jsonContent, strategy)
 }
 
 class WorkspaceExportImportManager(
@@ -303,6 +309,14 @@ class WorkspaceExportImportManager(
         jsonContent: String,
         strategy: ImportStrategy
     ): WorkspaceImportResult {
+        return importPostmanCollection(jsonContent, customVariables = null, strategy = strategy)
+    }
+
+    override suspend fun importPostmanCollection(
+        jsonContent: String,
+        customVariables: List<Variable>?,
+        strategy: ImportStrategy
+    ): WorkspaceImportResult {
         if (jsonContent.isBlank()) {
             return WorkspaceImportResult.Error("Import content cannot be empty")
         }
@@ -393,10 +407,27 @@ class WorkspaceExportImportManager(
                     requestRepository.insertRequest(finalRequest)
                 }
 
+                val finalVariables = customVariables ?: parseResult.variables
+                var environmentsCount = 0
+                if (finalVariables.isNotEmpty()) {
+                    val now = collection.createdAt
+                    val envId = "env_pm_${targetCollectionId}_$now"
+                    val envName = "${collection.name} Environment"
+                    val environment = Environment(
+                        id = envId,
+                        name = envName,
+                        variables = finalVariables,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    environmentRepository.insertEnvironment(environment)
+                    environmentsCount = 1
+                }
+
                 return WorkspaceImportResult.Success(
                     collectionsImported = 1,
                     requestsImported = requests.size,
-                    environmentsImported = 0,
+                    environmentsImported = environmentsCount,
                     warnings = parseResult.warnings
                 )
             }

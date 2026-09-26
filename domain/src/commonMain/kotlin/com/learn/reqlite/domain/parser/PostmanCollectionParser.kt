@@ -6,6 +6,9 @@ import com.learn.reqlite.domain.model.HttpMethod
 import com.learn.reqlite.domain.model.Request
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
+import com.learn.reqlite.domain.model.Variable
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -18,6 +21,7 @@ sealed interface PostmanParseResult {
         val collection: Collection,
         val folders: List<Folder>,
         val requests: List<Request>,
+        val variables: List<Variable> = emptyList(),
         val warnings: List<String> = emptyList()
     ) : PostmanParseResult
 
@@ -93,10 +97,88 @@ class PostmanCollectionParserImpl(
             warnings = warnings
         )
 
+        val explicitVariablesMap = LinkedHashMap<String, Variable>()
+        val variableArray = rootObj["variable"] as? JsonArray
+        if (variableArray != null) {
+            for (element in variableArray) {
+                val varObj = element as? JsonObject ?: continue
+                val key = varObj["key"].asString()?.trim() ?: continue
+                if (key.isBlank()) continue
+                val value = varObj["value"].asString() ?: ""
+                val disabled = varObj["disabled"].asBoolean() ?: false
+                val isEnabled = !disabled
+                val existing = explicitVariablesMap[key]
+                if (existing == null || (!existing.isEnabled && isEnabled) || (existing.isEnabled == isEnabled)) {
+                    explicitVariablesMap[key] = Variable(
+                        id = generateVariableId(),
+                        key = key,
+                        value = value,
+                        isEnabled = isEnabled,
+                        isSecret = false
+                    )
+                }
+            }
+        }
+        val explicitVariables = explicitVariablesMap.values.toList()
+
+        val detectedKeys = mutableSetOf<String>()
+        val variableRegex = Regex("""\{\{([^}]+)\}\}""")
+
+        fun scanText(text: String?) {
+            if (text.isNullOrBlank()) return
+            variableRegex.findAll(text).forEach { match ->
+                val key = match.groupValues[1].trim()
+                if (key.isNotBlank()) {
+                    detectedKeys.add(key)
+                }
+            }
+        }
+
+        for (req in requests) {
+            scanText(req.url)
+            for (qp in req.queryParams) {
+                scanText(qp.key)
+                scanText(qp.value)
+            }
+            for (h in req.headers) {
+                scanText(h.key)
+                scanText(h.value)
+            }
+            when (val b = req.body) {
+                is RequestBody.TextBody -> scanText(b.content)
+                is RequestBody.FormDataBody -> b.parts.forEach {
+                    scanText(it.key)
+                    scanText(it.value)
+                }
+                is RequestBody.UrlEncodedBody -> b.fields.forEach {
+                    scanText(it.key)
+                    scanText(it.value)
+                }
+                is RequestBody.NoBody -> {}
+            }
+        }
+
+        val allVariables = explicitVariables.toMutableList()
+        val explicitKeys = explicitVariables.map { it.key }.toSet()
+        for (detectedKey in detectedKeys) {
+            if (detectedKey !in explicitKeys) {
+                allVariables.add(
+                    Variable(
+                        id = generateVariableId(),
+                        key = detectedKey,
+                        value = "",
+                        isEnabled = true,
+                        isSecret = false
+                    )
+                )
+            }
+        }
+
         return PostmanParseResult.Success(
             collection = collection,
             folders = folders,
             requests = requests,
+            variables = allVariables,
             warnings = warnings
         )
     }
@@ -512,4 +594,7 @@ class PostmanCollectionParserImpl(
     private fun JsonElement?.asBoolean(): Boolean? {
         return (this as? JsonPrimitive)?.booleanOrNull
     }
+
+    @OptIn(ExperimentalUuidApi::class)
+    private fun generateVariableId(): String = "var_pm_${Uuid.random()}"
 }
