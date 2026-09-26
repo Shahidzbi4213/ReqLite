@@ -17,6 +17,11 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import com.learn.reqlite.domain.model.Environment
+import com.learn.reqlite.domain.model.Variable
+import com.learn.reqlite.domain.repository.EnvironmentRepository
+import kotlinx.coroutines.flow.first
+import org.junit.Assert.assertNotNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -29,6 +34,7 @@ class HomeViewModelTest {
     private lateinit var fakeHistoryRepo: FakeHistoryRepository
     private lateinit var fakeRequestRepo: FakeRequestRepository
     private lateinit var fakeCollectionRepo: FakeCollectionRepository
+    private lateinit var fakeEnvironmentRepo: FakeEnvironmentRepository
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -37,7 +43,13 @@ class HomeViewModelTest {
         fakeHistoryRepo = FakeHistoryRepository()
         fakeRequestRepo = FakeRequestRepository()
         fakeCollectionRepo = FakeCollectionRepository()
-        viewModel = HomeViewModel(fakeHistoryRepo, fakeRequestRepo, fakeCollectionRepo)
+        fakeEnvironmentRepo = FakeEnvironmentRepository()
+        viewModel = HomeViewModel(
+            historyRepository = fakeHistoryRepo,
+            requestRepository = fakeRequestRepo,
+            collectionRepository = fakeCollectionRepo,
+            environmentRepository = fakeEnvironmentRepo
+        )
     }
 
     @After
@@ -216,6 +228,48 @@ class HomeViewModelTest {
         assertEquals(1, success.requests.size)
     }
 
+    @Test
+    fun importPostmanCollection_withCustomVariables_createsEnvironmentAndRequests() = runTest {
+        val postmanJson = """
+        {
+          "info": {
+            "name": "Auth API",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Login",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/login"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val customVars = listOf(
+            Variable(id = "var_1", key = "baseUrl", value = "https://api.example.com", isEnabled = true)
+        )
+
+        var resultSuccess: com.learn.reqlite.domain.export.WorkspaceImportResult.Success? = null
+        viewModel.importPostmanCollection(postmanJson, customVariables = customVars) { result ->
+            resultSuccess = result.getOrNull()
+        }
+
+        assertNotNull(resultSuccess)
+        assertEquals(1, resultSuccess?.collectionsImported)
+        assertEquals(1, resultSuccess?.requestsImported)
+        assertEquals(1, resultSuccess?.environmentsImported)
+
+        val envs = fakeEnvironmentRepo.getAllEnvironments().first()
+        assertEquals(1, envs.size)
+        assertEquals("Auth API Environment", envs.first().name)
+        val envVar = envs.first().variables.first()
+        assertEquals("baseUrl", envVar.key)
+        assertEquals("https://api.example.com", envVar.value)
+    }
+
     class FakeHistoryRepository : HistoryRepository {
         private val entries = MutableStateFlow<List<HistoryEntry>>(emptyList())
 
@@ -281,5 +335,24 @@ class HomeViewModelTest {
 
         override suspend fun getCollectionById(id: String): com.learn.reqlite.domain.model.Collection? =
             collections.value.find { it.id == id }
+    }
+
+    class FakeEnvironmentRepository : EnvironmentRepository {
+        private val environments = MutableStateFlow<List<Environment>>(emptyList())
+
+        override suspend fun insertEnvironment(environment: Environment) {
+            environments.value = environments.value + environment
+        }
+
+        override suspend fun updateEnvironment(environment: Environment) {
+            environments.value = environments.value.map { if (it.id == environment.id) environment else it }
+        }
+
+        override suspend fun deleteEnvironment(id: String) {
+            environments.value = environments.value.filter { it.id != id }
+        }
+
+        override fun getAllEnvironments(): Flow<List<Environment>> = environments.asStateFlow()
+        override suspend fun getEnvironmentById(id: String): Environment? = environments.value.find { it.id == id }
     }
 }
