@@ -16,7 +16,8 @@ val appModule = module {
             historyRepository = get(),
             requestRepository = get(),
             collectionRepository = get(),
-            workspaceImporter = getOrNull()
+            workspaceImporter = getOrNull(),
+            environmentRepository = getOrNull()
         )
     }
     factory { 

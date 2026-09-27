@@ -31,12 +31,29 @@ import com.learn.reqlite.ui.theme.spacing
 import org.koin.compose.viewmodel.koinViewModel
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.learn.reqlite.domain.model.Collection
 import com.learn.reqlite.domain.model.Request
-import androidx.compose.ui.platform.LocalContext
-import android.widget.Toast
+import com.learn.reqlite.domain.model.Variable
+import com.learn.reqlite.domain.parser.PostmanCollectionParserImpl
+import com.learn.reqlite.domain.parser.PostmanParseResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,17 +93,25 @@ fun HomeScreen(
                 onNavigateToRequest(null, null, draftId)
             }
         },
-        onImportPostmanCollection = { json ->
-            viewModel.importPostmanCollection(json) { result ->
+        onImportPostmanCollection = { json, customVars ->
+            viewModel.importPostmanCollection(json, customVars) { result ->
                 if (result.isSuccess) {
-                    val count = result.getOrNull() ?: 0
-                    Toast.makeText(context, "Imported collection with $count requests!", Toast.LENGTH_SHORT).show()
+                    val res = result.getOrNull()
+                    val reqCount = res?.requestsImported ?: 0
+                    val envCount = res?.environmentsImported ?: 0
+                    val msg = if (envCount > 0) {
+                        "Imported collection with $reqCount requests & created environment!"
+                    } else {
+                        "Imported collection with $reqCount requests!"
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 } else {
                     val msg = result.exceptionOrNull()?.message ?: "Import failed"
                     Toast.makeText(context, "Import failed: $msg", Toast.LENGTH_LONG).show()
                 }
             }
         },
+        onParsePostmanCollection = { json -> viewModel.parsePostmanCollection(json) },
         modifier = modifier
     )
 }
@@ -104,7 +129,12 @@ fun HomeScreenContent(
     onDeleteCollection: (Collection) -> Unit = {},
     onDeleteRequest: (String) -> Unit = {},
     onOpenSavedRequest: (Request) -> Unit = {},
-    onImportPostmanCollection: (String) -> Unit = {},
+    onImportPostmanCollection: (String, List<Variable>?) -> Unit = { _, _ -> },
+    onParsePostmanCollection: suspend (String) -> PostmanParseResult = { json ->
+        withContext(Dispatchers.Default) {
+            PostmanCollectionParserImpl().parse(json)
+        }
+    },
     modifier: Modifier = Modifier
 ) {
     var quickUrl by remember { mutableStateOf("") }
@@ -169,6 +199,12 @@ fun HomeScreenContent(
             }
 
             item {
+                PostmanImportSection(
+                    onImportClick = { showImportPostmanDialog = true }
+                )
+            }
+
+            item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -180,24 +216,35 @@ fun HomeScreenContent(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilledTonalButton(
                             onClick = { showImportPostmanDialog = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = PillShape
                         ) {
-                            Text("Import", style = MaterialTheme.typography.labelMedium)
+                            Icon(
+                                painter = painterResource(R.drawable.ic_save_collection),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Import Postman", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                         }
-                        TextButton(
+                        OutlinedButton(
                             onClick = { showCreateCollectionDialog = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = PillShape
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("New", style = MaterialTheme.typography.labelMedium)
+                            Text("New", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -205,7 +252,10 @@ fun HomeScreenContent(
 
             if (collections.isEmpty()) {
                 item {
-                    EmptyStateCard(message = "No collections yet. Organize your requests into collections.")
+                    EmptyCollectionsCard(
+                        onImportClick = { showImportPostmanDialog = true },
+                        onNewClick = { showCreateCollectionDialog = true }
+                    )
                 }
             } else {
                 items(collections, key = { it.id }) { collection ->
@@ -333,10 +383,11 @@ fun HomeScreenContent(
         if (showImportPostmanDialog) {
             ImportPostmanDialog(
                 onDismiss = { showImportPostmanDialog = false },
-                onImport = { json ->
+                onImport = { json, customVars ->
                     showImportPostmanDialog = false
-                    onImportPostmanCollection(json)
-                }
+                    onImportPostmanCollection(json, customVars)
+                },
+                onParseJson = onParsePostmanCollection
             )
         }
     }
@@ -345,73 +396,527 @@ fun HomeScreenContent(
 @Composable
 fun ImportPostmanDialog(
     onDismiss: () -> Unit,
-    onImport: (jsonContent: String) -> Unit
+    onImport: (jsonContent: String, variables: List<Variable>?) -> Unit,
+    initialJson: String? = null,
+    onParseJson: suspend (String) -> PostmanParseResult = { json ->
+        withContext(Dispatchers.Default) {
+            PostmanCollectionParserImpl().parse(json)
+        }
+    }
 ) {
-    var jsonText by remember { mutableStateOf("") }
-    var previewInfo by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var jsonText by remember { mutableStateOf(initialJson ?: "") }
+    var selectedFileName by remember { mutableStateOf<String?>(null) }
+    var parseResult by remember { mutableStateOf<PostmanParseResult?>(null) }
+    val editedVariables = remember { mutableStateMapOf<String, String>() }
+    var createEnvironment by remember { mutableStateOf(true) }
+
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                try {
+                    val content = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    }
+                    if (!content.isNullOrBlank()) {
+                        jsonText = content
+                        selectedFileName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
+                        Toast.makeText(context, "Loaded collection file", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to read file: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(jsonText) {
+        if (jsonText.isNotBlank()) {
+            val res = onParseJson(jsonText)
+            parseResult = res
+            if (res is PostmanParseResult.Success) {
+                editedVariables.clear()
+                res.variables.forEach { v ->
+                    editedVariables[v.key] = v.value
+                }
+            }
+        } else {
+            parseResult = null
+            editedVariables.clear()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Import Postman Collection", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Paste a Postman v2.0 or v2.1 collection JSON below to import all endpoints, folders, and headers into ReqLite.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                OutlinedTextField(
-                    value = jsonText,
-                    onValueChange = {
-                        jsonText = it
-                        if (it.isNotBlank()) {
-                            val parser = com.learn.reqlite.domain.parser.PostmanCollectionParserImpl()
-                            when (val res = parser.parse(it)) {
-                                is com.learn.reqlite.domain.parser.PostmanParseResult.Success -> {
-                                    previewInfo = "${res.collection.name} • ${res.requests.size} requests • ${res.folders.size} folders"
-                                    isError = false
-                                }
-                                is com.learn.reqlite.domain.parser.PostmanParseResult.Error -> {
-                                    previewInfo = res.message
-                                    isError = true
-                                }
-                            }
-                        } else {
-                            previewInfo = null
-                            isError = false
-                        }
-                    },
-                    label = { Text("Collection JSON") },
-                    placeholder = { Text("{\"info\": {\"name\": ...}, \"item\": [...]}") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 220.dp),
-                    maxLines = 8,
-                    isError = isError
-                )
-
-                if (previewInfo != null) {
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save_collection),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Column {
                     Text(
-                        text = previewInfo ?: "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
+                        text = "Import Postman Collection",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "v2.0 & v2.1 with Environment Variables",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Upload File", style = MaterialTheme.typography.labelMedium) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Paste JSON", style = MaterialTheme.typography.labelMedium) }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        text = { Text("Sample", style = MaterialTheme.typography.labelMedium) }
+                    )
+                }
+
+                when (selectedTab) {
+                    0 -> {
+                        OutlinedCard(
+                            onClick = { filePickerLauncher.launch("*/*") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_folder),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Text(
+                                    text = selectedFileName ?: "Select .json collection file",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selectedFileName != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = if (selectedFileName != null) "Tap to choose a different file" else "Tap to browse files on your device",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                    1 -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        val clip = clipboardManager.getText()?.text
+                                        if (!clip.isNullOrBlank()) {
+                                            jsonText = clip
+                                            selectedFileName = "Clipboard content"
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Paste Clipboard", style = MaterialTheme.typography.labelSmall)
+                                }
+                                if (jsonText.isNotBlank()) {
+                                    TextButton(
+                                        onClick = {
+                                            jsonText = ""
+                                            selectedFileName = null
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("Clear", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = jsonText,
+                                onValueChange = { jsonText = it },
+                                placeholder = { Text("Paste Postman JSON here...", style = MaterialTheme.typography.bodySmall) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 100.dp, max = 160.dp),
+                                maxLines = 7,
+                                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                isError = parseResult is PostmanParseResult.Error
+                            )
+                        }
+                    }
+                    2 -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = PillShape,
+                                            color = MaterialTheme.colorScheme.secondaryContainer
+                                        ) {
+                                            Text(
+                                                 text = "Sample 1",
+                                                 style = MaterialTheme.typography.labelSmall,
+                                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                 fontWeight = FontWeight.Bold,
+                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = "Tebyan Dua API",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Text(
+                                        text = "9 requests (Categories, Duas, Search) with configured {{url}} variable.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    FilledTonalButton(
+                                        onClick = {
+                                            jsonText = PostmanSampleCollections.TEBYAN_DUA_API_JSON
+                                            selectedFileName = "Tebyan Dua Api (Sample)"
+                                        },
+                                        shape = PillShape,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Load Tebyan Dua API")
+                                    }
+                                }
+                            }
+
+                            OutlinedCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = PillShape,
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Text(
+                                                text = "Sample 2",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = "Tebyan Hadith APIs",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Text(
+                                        text = "7 requests using {{url}} placeholders without explicit definition.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Button(
+                                        onClick = {
+                                            jsonText = PostmanSampleCollections.TEBYAN_HADITH_APIS_JSON
+                                            selectedFileName = "Tebyan Hadith APIs (Sample)"
+                                        },
+                                        shape = PillShape,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Load Tebyan Hadith APIs")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                when (val res = parseResult) {
+                    is PostmanParseResult.Error -> {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = res.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+                    is PostmanParseResult.Success -> {
+                        ElevatedCard(
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.elevatedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = res.collection.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (!res.collection.description.isNullOrBlank()) {
+                                    Text(
+                                        text = res.collection.description ?: "",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = PillShape,
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = "${res.requests.size} Requests",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    if (res.folders.isNotEmpty()) {
+                                        Surface(
+                                            shape = PillShape,
+                                            color = MaterialTheme.colorScheme.secondaryContainer
+                                        ) {
+                                            Text(
+                                                text = "${res.folders.size} Folders",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        shape = PillShape,
+                                        color = if (res.variables.isNotEmpty()) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+                                    ) {
+                                        Text(
+                                            text = "${res.variables.size} Variables",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (res.variables.isNotEmpty()) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (res.variables.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Collection Variables",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Set values for variables referenced in this collection's requests.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { createEnvironment = !createEnvironment }
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = createEnvironment,
+                                        onCheckedChange = { createEnvironment = it }
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Create Environment (\"${res.collection.name} Environment\")",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                res.variables.forEach { variable ->
+                                    val currentValue = editedVariables[variable.key] ?: variable.value
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "{{${variable.key}}}",
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                if (currentValue.isBlank()) {
+                                                    Surface(
+                                                        shape = PillShape,
+                                                        color = MaterialTheme.colorScheme.errorContainer
+                                                    ) {
+                                                        Text(
+                                                            text = "Value Needed",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                                            fontSize = 10.sp,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            OutlinedTextField(
+                                                value = currentValue,
+                                                onValueChange = { newVal ->
+                                                    editedVariables[variable.key] = newVal
+                                                },
+                                                placeholder = {
+                                                    Text(
+                                                        text = "Enter variable value",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                },
+                                                singleLine = true,
+                                                shape = MaterialTheme.shapes.small,
+                                                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    null -> { /* Waiting for user input */ }
+                }
+            }
+        },
         confirmButton = {
+            val success = parseResult as? PostmanParseResult.Success
             Button(
                 onClick = {
-                    if (jsonText.isNotBlank() && !isError) {
-                        onImport(jsonText.trim())
+                    if (success != null) {
+                        val finalVariables = if (createEnvironment) {
+                            success.variables.map { orig ->
+                                orig.copy(value = editedVariables[orig.key] ?: orig.value)
+                            }
+                        } else {
+                            emptyList()
+                        }
+                        onImport(jsonText.trim(), finalVariables)
                     }
                 },
-                enabled = jsonText.isNotBlank() && !isError
+                enabled = parseResult is PostmanParseResult.Success,
+                shape = PillShape
             ) {
-                Text("Import")
+                val reqCount = (parseResult as? PostmanParseResult.Success)?.requests?.size ?: 0
+                Text(if (reqCount > 0) "Import ($reqCount requests)" else "Import")
             }
         },
         dismissButton = {
@@ -420,6 +925,194 @@ fun ImportPostmanDialog(
             }
         }
     )
+}
+
+@Composable
+fun PostmanImportSection(
+    onImportClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedCard(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save_collection),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Import Postman Collection",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Surface(
+                            shape = PillShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = "v2.1",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Migrate collections, folders, and {{variables}} directly",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onImportClick,
+                    shape = PillShape,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_save_collection),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Import Collection",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EmptyCollectionsCard(
+    onImportClick: () -> Unit,
+    onNewClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_folder),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = "No Collections Yet",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = "Organize your API requests or import an existing Postman collection with all folders and variables.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilledTonalButton(
+                    onClick = onImportClick,
+                    shape = PillShape
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_save_collection),
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Import Postman",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onNewClick,
+                    shape = PillShape
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "New Collection",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

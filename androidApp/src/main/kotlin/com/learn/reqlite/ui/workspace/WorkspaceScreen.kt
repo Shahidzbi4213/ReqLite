@@ -29,7 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -121,8 +121,10 @@ fun WorkspaceScreen(
                     }
                 },
                 actions = {
+                    var showMoreMenu by remember { mutableStateOf(false) }
+
                     IconButton(onClick = { showTabsSheet = true }) {
-                         Icon(androidx.compose.material.icons.Icons.Default.Menu, contentDescription = "Open Tabs")
+                        Icon(Icons.Default.Menu, contentDescription = "Open Tabs")
                     }
                     IconButton(onClick = { showSaveCollectionDialog = true }) {
                         Icon(
@@ -131,27 +133,53 @@ fun WorkspaceScreen(
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    IconButton(onClick = { showCurlDialog = true }) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_terminal),
-                            contentDescription = "Paste cURL",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(onClick = {
-                        val options = ScanOptions()
-                        options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        options.setPrompt("Scan a QR Code")
-                        options.setCameraId(0) // Use a specific camera of the device
-                        options.setBeepEnabled(false)
-                        options.setBarcodeImageEnabled(true)
-                        qrScannerLauncher.launch(options)
-                    }) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_qr_code_scanner),
-                            contentDescription = "Scan QR Code",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                    Box {
+                        IconButton(onClick = { showMoreMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Paste cURL") },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_terminal),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    showCurlDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Scan QR Code") },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_qr_code_scanner),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    val options = ScanOptions()
+                                    options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                    options.setPrompt("Scan a QR Code")
+                                    options.setCameraId(0)
+                                    options.setBeepEnabled(false)
+                                    options.setBarcodeImageEnabled(true)
+                                    qrScannerLauncher.launch(options)
+                                }
+                            )
+                        }
                     }
                 }
             )

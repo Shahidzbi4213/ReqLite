@@ -52,6 +52,7 @@ Experience API testing reimagined for tactile mobile screens — crafted with **
 
 ### ⚡ Developer Power Tools
 - **cURL Parser**: Paste raw cURL commands from your clipboard and immediately transform them into structured requests.
+- **Postman Collection Import**: Import Postman collections (v2.0 / v2.1) directly from files, JSON text, or samples, automatically extracting variables into local environments.
 - **QR Code Scanner**: Instantly scan endpoint configurations and auth tokens using native cameras (`DataScannerViewController` on iOS, `ZXing` on Android).
 - **Deep Response Inspector**: Fast JSON tree parsing with search filtering, status pill chips, duration counters, and raw/pretty switching.
 - **Hardware-Backed Secret Vault**: Credentials stored securely via **iOS Keychain** and **Android Keystore** with opaque database references.
@@ -163,7 +164,8 @@ ReqLite has dedicated multiplatform and native test suites:
 - [x] Room 3.0 KMP persistence on iOS & Android
 - [x] Request History drawer & one-tap replay
 - [x] QR code configuration scanning
-- [ ] Postman / Insomnia collection import & export
+- [x] Postman collection import (v2.0 & v2.1) & environment variable resolution
+- [ ] Insomnia collection import & workspace export
 - [ ] WebSocket and Server-Sent Events (SSE) streaming
 - [ ] GraphQL query autocompletion & schema explorer
 - [ ] Scriptable pre-request & post-request test assertions

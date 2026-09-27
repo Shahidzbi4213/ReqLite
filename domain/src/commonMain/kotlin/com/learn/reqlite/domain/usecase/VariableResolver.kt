@@ -8,7 +8,7 @@ class VariableResolver {
         val regex = Regex("\\{\\{([^}]+)\\}\\}")
         
         return regex.replace(input) { matchResult ->
-            val key = matchResult.groupValues[1]
+            val key = matchResult.groupValues[1].trim()
             enabledVars[key]?.value ?: matchResult.value
         }
     }

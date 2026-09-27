@@ -47,4 +47,15 @@ class VariableResolverTest {
         val result = resolver.resolve(input, vars)
         assertEquals("https://example.com/{{path}}", result) // path unresolved
     }
+
+    @Test
+    fun testResolveWhitespacePaddedVariables() {
+        val input = "https://{{ host }}/api/{{ path  }}"
+        val vars = listOf(
+            Variable("1", "host", "example.com"),
+            Variable("2", "path", "items")
+        )
+        val result = resolver.resolve(input, vars)
+        assertEquals("https://example.com/api/items", result)
+    }
 }

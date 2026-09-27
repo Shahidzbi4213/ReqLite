@@ -7,6 +7,7 @@ import com.learn.reqlite.domain.repository.RequestRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
@@ -314,6 +315,47 @@ class WorkspaceExportImportTest {
         val result = manager.importWorkspace(jsonPayload)
         assertIs<WorkspaceImportResult.Success>(result)
         assertTrue(result.warnings.any { it.contains("newer than current") })
+    }
+
+    @Test
+    fun importPostmanCollection_withVariables_createsCollectionAndEnvironment() = runTest {
+        val postmanJson = """
+        {
+          "info": {
+            "name": "Tebyan Dua Api",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Categories",
+              "request": {
+                "method": "GET",
+                "url": "{{url}}/v1/dua-categories"
+              }
+            }
+          ],
+          "variable": [
+            {
+              "key": "url",
+              "value": "https://api.tebyan.com"
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val result = manager.importPostmanCollection(postmanJson)
+        assertIs<WorkspaceImportResult.Success>(result)
+        assertEquals(1, result.collectionsImported)
+        assertEquals(1, result.requestsImported)
+        assertEquals(1, result.environmentsImported)
+
+        val envs = fakeEnvironmentRepo.getAllEnvironments().first()
+        assertEquals(1, envs.size)
+        val env = envs.first()
+        assertEquals("Tebyan Dua Api Environment", env.name)
+        val urlVar = env.variables.find { it.key == "url" }
+        assertNotNull(urlVar)
+        assertEquals("https://api.tebyan.com", urlVar.value)
     }
 
     // Fakes
