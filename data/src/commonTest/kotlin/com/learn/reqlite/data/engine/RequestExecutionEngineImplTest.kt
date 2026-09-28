@@ -55,6 +55,7 @@ class FakeHistoryRepository : HistoryRepository {
     override suspend fun insertResponseArtifact(artifact: ResponseArtifact) { artifacts.add(artifact) }
     override fun getAllHistoryEntries(): Flow<List<HistoryEntry>> = flowOf(entries)
     override fun getHistoryForRequest(requestId: String): Flow<List<HistoryEntry>> = flowOf(entries.filter { it.requestId == requestId })
+    override suspend fun getHistoryEntryById(id: String): HistoryEntry? = entries.find { it.id == id }
     override suspend fun getResponseArtifactById(id: String): ResponseArtifact? = artifacts.find { it.id == id }
     override suspend fun deleteHistoryEntry(id: String) {}
     override suspend fun clearHistory() {}
@@ -119,5 +120,9 @@ class RequestExecutionEngineImplTest {
         val artifact = historyRepo.artifacts.find { it.id == artifactId }
         assertTrue(artifact != null)
         assertEquals("memory", artifact.filePath)
+
+        val retrievedEntry = historyRepo.getHistoryEntryById(result.first.id)
+        assertEquals(result.first.id, retrievedEntry?.id)
+        assertEquals("https://example.com/api/test", retrievedEntry?.requestUrl)
     }
 }

@@ -43,6 +43,10 @@ class FakeHistoryDao : HistoryDao {
         return artifacts[id]
     }
 
+    override suspend fun getHistoryEntryById(id: String): HistoryEntryEntity? {
+        return entries[id]
+    }
+
     override suspend fun deleteHistoryEntry(id: String) {
         entries.remove(id)
         emitFlow()
@@ -84,5 +88,11 @@ class HistoryRepositoryImplTest {
 
         val retrievedArtifact = repo.getResponseArtifactById("a1")
         assertEquals(artifact.filePath, retrievedArtifact?.filePath)
+
+        val retrievedEntry = repo.getHistoryEntryById("h1")
+        assertEquals(entry.requestUrl, retrievedEntry?.requestUrl)
+
+        val nonExistentEntry = repo.getHistoryEntryById("non_existent")
+        assertNull(nonExistentEntry)
     }
 }
