@@ -120,5 +120,9 @@ class RequestExecutionEngineImplTest {
         val artifact = historyRepo.artifacts.find { it.id == artifactId }
         assertTrue(artifact != null)
         assertEquals("memory", artifact.filePath)
+
+        val retrievedEntry = historyRepo.getHistoryEntryById(result.first.id)
+        assertEquals(result.first.id, retrievedEntry?.id)
+        assertEquals("https://example.com/api/test", retrievedEntry?.requestUrl)
     }
 }

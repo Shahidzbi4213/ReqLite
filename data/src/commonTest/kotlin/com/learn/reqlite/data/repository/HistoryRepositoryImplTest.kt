@@ -91,5 +91,8 @@ class HistoryRepositoryImplTest {
 
         val retrievedEntry = repo.getHistoryEntryById("h1")
         assertEquals(entry.requestUrl, retrievedEntry?.requestUrl)
+
+        val nonExistentEntry = repo.getHistoryEntryById("non_existent")
+        assertNull(nonExistentEntry)
     }
 }
