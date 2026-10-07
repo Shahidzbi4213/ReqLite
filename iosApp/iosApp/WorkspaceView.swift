@@ -278,9 +278,13 @@ struct WorkspaceView: View {
                         .accessibilityLabel("Request History")
 
                         Button {
-                            viewModel.showingSaveCollectionSheet = true
+                            if viewModel.activeRequestId != nil {
+                                viewModel.saveCurrentRequest()
+                            } else {
+                                viewModel.showingSaveCollectionSheet = true
+                            }
                         } label: {
-                            Image(systemName: "folder.badge.plus")
+                            Image(systemName: viewModel.activeRequestId != nil ? "square.and.arrow.down" : "folder.badge.plus")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.primary)
                                 .frame(width: 32, height: 32)
@@ -289,10 +293,10 @@ struct WorkspaceView: View {
                                 .overlay(
                                     Circle()
                                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                                )
+                                    )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Save to Collection")
+                        .accessibilityLabel(viewModel.activeRequestId != nil ? "Save Request" : "Save to Collection")
                     }
                 }
                 .safeAreaInset(edge: .bottom) {

@@ -455,6 +455,7 @@ struct FullScreenResponseView: View {
 
 extension ResponseStateView {
     static func prettyJson(_ raw: String) -> String {
+        guard raw.count < 1_000_000 else { return raw }
         guard let data = raw.data(using: .utf8),
               let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
               let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys]),

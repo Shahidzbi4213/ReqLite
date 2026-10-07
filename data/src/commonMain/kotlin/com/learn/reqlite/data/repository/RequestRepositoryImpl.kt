@@ -15,6 +15,8 @@ class RequestRepositoryImpl(
 
     override suspend fun insertRequest(request: Request) {
         requestDao.insertRequest(request.toEntity())
+        requestDao.deleteFieldsForRequest(request.id)
+        requestDao.deleteBodyForRequest(request.id)
         
         val fields = request.headers.map { it.toEntity(request.id, null, "HEADER") } +
                 request.queryParams.map { it.toEntity(request.id, null, "QUERY_PARAM") }
@@ -50,6 +52,8 @@ class RequestRepositoryImpl(
 
     override suspend fun insertDraft(draft: Draft) {
         requestDao.insertDraft(draft.toEntity())
+        requestDao.deleteFieldsForDraft(draft.id)
+        requestDao.deleteBodyForDraft(draft.id)
 
         val fields = draft.headers.map { it.toEntity(null, draft.id, "HEADER") } +
                 draft.queryParams.map { it.toEntity(null, draft.id, "QUERY_PARAM") }

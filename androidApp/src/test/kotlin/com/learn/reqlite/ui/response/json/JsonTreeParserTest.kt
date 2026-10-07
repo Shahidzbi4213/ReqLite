@@ -111,4 +111,15 @@ class JsonTreeParserTest {
         assertEquals(json, annotated.text)
         assertTrue(annotated.spanStyles.isNotEmpty())
     }
+
+    @Test
+    fun formatStreamingJson_formatsProperlyWithoutAST() {
+        val compact = """{"id":1,"name":"test","active":true}"""
+        val formatted = JsonTreeParser.formatStreamingJson(compact)
+
+        assertTrue(formatted.contains("\n"))
+        assertTrue(formatted.contains("  \"id\": 1"))
+        assertTrue(formatted.contains("  \"name\": \"test\""))
+        assertTrue(formatted.contains("  \"active\": true"))
+    }
 }

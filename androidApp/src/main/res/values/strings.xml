@@ -10,7 +10,6 @@
     <string name="curl_hint">curl -X GET ...</string>
     <string name="import_action">Import</string>
     <string name="recent_requests">Recent Requests</string>
-    <string name="drafts">Drafts</string>
     <string name="method">Method</string>
     <string name="url">URL</string>
     <string name="send">Send</string>

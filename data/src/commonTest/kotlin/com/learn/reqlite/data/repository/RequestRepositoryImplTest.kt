@@ -99,6 +99,14 @@ class FakeRequestDao : RequestDao {
     override suspend fun deleteBodyForDraft(draftId: String) {
         bodies.remove(draftId)
     }
+
+    override suspend fun deleteFieldsForRequest(requestId: String) {
+        fields.removeAll { it.requestId == requestId }
+    }
+
+    override suspend fun deleteBodyForRequest(requestId: String) {
+        bodies.remove(requestId)
+    }
 }
 
 class RequestRepositoryImplTest {

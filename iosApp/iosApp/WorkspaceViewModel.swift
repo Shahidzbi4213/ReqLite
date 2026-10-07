@@ -30,6 +30,7 @@ class WorkspaceViewModel: ObservableObject {
     @Published var showingSaveCollectionSheet: Bool = false
     @Published var showingNewCollectionAlert: Bool = false
     @Published var showingImportPostmanSheet: Bool = false
+    @Published var activeRequestId: String? = nil
 
     struct KeyValueItem: Identifiable, Equatable {
         let id = UUID()
@@ -157,14 +158,46 @@ class WorkspaceViewModel: ObservableObject {
             headers: headersList,
             queryParams: queryParamsList,
             bodyContent: body
-        ) { _ in
+        ) { [weak self] req in
             Task { @MainActor in
-                self.showingSaveCollectionSheet = false
+                self?.activeRequestId = req.id
+                self?.showingSaveCollectionSheet = false
             }
         }
     }
 
+    func saveCurrentRequest() {
+        guard let reqId = activeRequestId else {
+            showingSaveCollectionSheet = true
+            return
+        }
+        guard let adapter = adapter else { return }
+
+        var headersList: [RequestField] = []
+        for h in headers where !h.key.trimmingCharacters(in: .whitespaces).isEmpty {
+            headersList.append(adapter.createRequestField(key: h.key, value: h.value, isEnabled: h.isEnabled))
+        }
+
+        var queryParamsList: [RequestField] = []
+        for p in queryParams where !p.key.trimmingCharacters(in: .whitespaces).isEmpty {
+            queryParamsList.append(adapter.createRequestField(key: p.key, value: p.value, isEnabled: p.isEnabled))
+        }
+
+        let body = requestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : requestBody
+
+        adapter.updateRequest(
+            requestId: reqId,
+            name: nil,
+            methodName: method,
+            url: url,
+            headers: headersList,
+            queryParams: queryParamsList,
+            bodyContent: body
+        ) { _ in }
+    }
+
     func loadSavedRequest(_ req: ReqLiteRequest) {
+        self.activeRequestId = req.id
         self.method = req.method.name
         self.url = req.url
         self.queryParams = req.queryParams.map { field in

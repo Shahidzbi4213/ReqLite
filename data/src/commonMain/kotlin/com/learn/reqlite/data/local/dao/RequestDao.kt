@@ -63,4 +63,10 @@ interface RequestDao {
 
     @Query("DELETE FROM request_bodies WHERE draftId = :draftId")
     suspend fun deleteBodyForDraft(draftId: String)
+
+    @Query("DELETE FROM request_fields WHERE requestId = :requestId")
+    suspend fun deleteFieldsForRequest(requestId: String)
+
+    @Query("DELETE FROM request_bodies WHERE requestId = :requestId")
+    suspend fun deleteBodyForRequest(requestId: String)
 }

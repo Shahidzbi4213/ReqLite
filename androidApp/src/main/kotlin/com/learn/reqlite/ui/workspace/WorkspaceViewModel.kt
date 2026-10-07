@@ -95,6 +95,9 @@ class WorkspaceViewModel(
     private val _activeDraftId = MutableStateFlow<String?>(null)
     val activeDraftId: StateFlow<String?> = _activeDraftId.asStateFlow()
 
+    private val _activeRequestId = MutableStateFlow<String?>(null)
+    val activeRequestId: StateFlow<String?> = _activeRequestId.asStateFlow()
+
     private var activeExecutionJob: Job? = null
 
     init {
@@ -130,22 +133,27 @@ class WorkspaceViewModel(
 
     fun setUrl(newUrl: String) {
         _url.value = newUrl
+        saveDraft()
     }
 
     fun setMethod(newMethod: String) {
         _method.value = newMethod
+        saveDraft()
     }
 
     fun setQueryParams(newParams: List<RequestField>) {
         _queryParams.value = newParams
+        saveDraft()
     }
 
     fun setHeaders(newHeaders: List<RequestField>) {
         _headers.value = newHeaders
+        saveDraft()
     }
 
     fun setBody(newBody: RequestBody) {
         _body.value = newBody
+        saveDraft()
     }
 
     fun setAuthConfiguration(newAuth: AuthConfiguration) {
@@ -409,7 +417,7 @@ class WorkspaceViewModel(
         viewModelScope.launch {
             val draft = Draft(
                 id = draftId,
-                requestId = null,
+                requestId = _activeRequestId.value,
                 method = parseHttpMethod(_method.value),
                 url = _url.value,
                 headers = _headers.value,
@@ -431,6 +439,7 @@ class WorkspaceViewModel(
             _queryParams.value = draft.queryParams
             _body.value = draft.body
             _activeDraftId.value = draftId
+            _activeRequestId.value = draft.requestId
         }
     }
 
@@ -442,6 +451,7 @@ class WorkspaceViewModel(
     fun createNewTab() {
         saveDraft() // Save current state
         val newDraftId = "draft_${nowMs()}"
+        _activeRequestId.value = null
         _url.value = ""
         _method.value = "GET"
         _headers.value = emptyList()
@@ -495,6 +505,41 @@ class WorkspaceViewModel(
         }
     }
 
+    fun saveCurrentRequest(onSaved: (Request) -> Unit = {}) {
+        viewModelScope.launch {
+            val reqId = _activeRequestId.value
+            if (reqId != null && requestRepository != null) {
+                val existing = requestRepository.getRequestById(reqId)
+                val now = nowMs()
+                val updatedRequest = existing?.copy(
+                    method = parseHttpMethod(_method.value),
+                    url = _url.value,
+                    headers = _headers.value,
+                    queryParams = _queryParams.value,
+                    body = _body.value,
+                    updatedAt = now
+                ) ?: Request(
+                    id = reqId,
+                    collectionId = "default",
+                    folderId = null,
+                    name = _url.value.ifBlank { "Request" },
+                    method = parseHttpMethod(_method.value),
+                    url = _url.value,
+                    headers = _headers.value,
+                    queryParams = _queryParams.value,
+                    body = _body.value,
+                    createdAt = now,
+                    updatedAt = now
+                )
+                requestRepository.insertRequest(updatedRequest)
+                saveDraft()
+                onSaved(updatedRequest)
+            } else {
+                saveDraft()
+            }
+        }
+    }
+
     fun saveToCollection(
         collectionId: String,
         newCollectionName: String? = null,
@@ -533,6 +578,7 @@ class WorkspaceViewModel(
             )
 
             requestRepository?.insertRequest(request)
+            _activeRequestId.value = request.id
             saveDraft()
             onSaved()
         }

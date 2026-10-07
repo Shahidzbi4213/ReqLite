@@ -22,13 +22,8 @@ import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 
 import com.journeyapps.barcodescanner.ScanContract
@@ -62,12 +57,15 @@ fun WorkspaceScreen(
     val isProtectedWarningVisible by viewModel.isProtectedWarningVisible.collectAsState()
     val pendingExecution by viewModel.pendingExecution.collectAsState()
 
-    val openDrafts by viewModel.openDrafts.collectAsState()
-    val activeDraftId by viewModel.activeDraftId.collectAsState()
     val collections by viewModel.collections.collectAsState()
-    var showTabsSheet by remember { mutableStateOf(false) }
+    val activeRequestId by viewModel.activeRequestId.collectAsState()
     var showCurlDialog by remember { mutableStateOf(false) }
     var showSaveCollectionDialog by remember { mutableStateOf(false) }
+
+    androidx.activity.compose.BackHandler {
+        viewModel.saveDraft()
+        onNavigateBack()
+    }
 
     val context = LocalContext.current
     val qrScannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -123,13 +121,18 @@ fun WorkspaceScreen(
                 actions = {
                     var showMoreMenu by remember { mutableStateOf(false) }
 
-                    IconButton(onClick = { showTabsSheet = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Open Tabs")
-                    }
-                    IconButton(onClick = { showSaveCollectionDialog = true }) {
+                    IconButton(onClick = {
+                        if (activeRequestId != null) {
+                            viewModel.saveCurrentRequest {
+                                Toast.makeText(context, "Request updated", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            showSaveCollectionDialog = true
+                        }
+                    }) {
                         Icon(
                             painter = painterResource(R.drawable.ic_save_collection),
-                            contentDescription = "Save to Collection",
+                            contentDescription = if (activeRequestId != null) "Save Request" else "Save to Collection",
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -145,6 +148,22 @@ fun WorkspaceScreen(
                             expanded = showMoreMenu,
                             onDismissRequest = { showMoreMenu = false }
                         ) {
+                            if (activeRequestId != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Save As New...") },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_save_collection),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        showSaveCollectionDialog = true
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Paste cURL") },
                                 leadingIcon = {
@@ -274,60 +293,6 @@ fun WorkspaceScreen(
             onConfirm = { viewModel.confirmProtectedExecution() },
             onDismiss = { viewModel.dismissProtectedWarning() }
         )
-    }
-    
-    // Tabs Bottom Sheet
-    if (showTabsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showTabsSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = "Open Requests (${openDrafts.size})",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                LazyColumn {
-                    item {
-                        ListItem(
-                            headlineContent = { Text("Create New Request", color = MaterialTheme.colorScheme.primary) },
-                            leadingContent = {
-                                Icon(Icons.Default.Add, contentDescription = "New", tint = MaterialTheme.colorScheme.primary)
-                            },
-                            modifier = Modifier.clickable {
-                                viewModel.createNewTab()
-                                showTabsSheet = false
-                            }
-                        )
-                        HorizontalDivider()
-                    }
-                    items(openDrafts) { draft ->
-                        val isActive = draft.id == activeDraftId
-                        ListItem(
-                            headlineContent = { Text(draft.url.ifBlank { "Untitled Request" }) },
-                            supportingContent = { Text(draft.method.name) },
-                            leadingContent = {
-                                if (isActive) {
-                                    Icon(Icons.Default.Check, contentDescription = "Active")
-                                }
-                            },
-                            modifier = Modifier.clickable {
-                                viewModel.switchTab(draft.id)
-                                showTabsSheet = false
-                            },
-                            colors = ListItemDefaults.colors(
-                                containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                            )
-                        )
-                    }
-                }
-            }
-        }
     }
 
     if (showCurlDialog) {

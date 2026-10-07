@@ -81,12 +81,104 @@ object JsonTreeParser {
 
     fun formatPrettyJson(rawJson: String): String {
         if (rawJson.isBlank()) return ""
-        return try {
-            val element = jsonParser.parseToJsonElement(rawJson.trim())
-            prettyJson.encodeToString(JsonElement.serializer(), element)
-        } catch (_: Exception) {
-            rawJson
+        val trimmed = rawJson.trim()
+        // If content is very large (> 500 KB), use fast streaming formatter to avoid AST OOM
+        if (trimmed.length > 500_000) {
+            return formatStreamingJson(trimmed)
         }
+        return try {
+            val element = jsonParser.parseToJsonElement(trimmed)
+            prettyJson.encodeToString(JsonElement.serializer(), element)
+        } catch (_: Throwable) {
+            try {
+                formatStreamingJson(trimmed)
+            } catch (_: Throwable) {
+                rawJson
+            }
+        }
+    }
+
+    fun formatStreamingJson(json: String, indent: String = "  "): String {
+        val len = json.length
+        if (len == 0) return ""
+        val sb = StringBuilder(len + (len / 4).coerceAtMost(1_000_000))
+        var level = 0
+        var inString = false
+        var isEscaped = false
+        var i = 0
+
+        fun appendIndent(lvl: Int) {
+            for (k in 0 until lvl) {
+                sb.append(indent)
+            }
+        }
+
+        while (i < len) {
+            val c = json[i]
+
+            if (inString) {
+                sb.append(c)
+                if (c == '\\' && !isEscaped) {
+                    isEscaped = true
+                } else {
+                    if (c == '"' && !isEscaped) {
+                        inString = false
+                    }
+                    isEscaped = false
+                }
+                i++
+                continue
+            }
+
+            when (c) {
+                '"' -> {
+                    inString = true
+                    isEscaped = false
+                    sb.append(c)
+                }
+                '{', '[' -> {
+                    sb.append(c)
+                    var nextIdx = i + 1
+                    while (nextIdx < len && (json[nextIdx] == ' ' || json[nextIdx] == '\t' || json[nextIdx] == '\n' || json[nextIdx] == '\r')) {
+                        nextIdx++
+                    }
+                    val isClosing = (c == '{' && nextIdx < len && json[nextIdx] == '}') ||
+                                    (c == '[' && nextIdx < len && json[nextIdx] == ']')
+                    if (!isClosing) {
+                        sb.append('\n')
+                        level++
+                        appendIndent(level)
+                    }
+                }
+                '}', ']' -> {
+                    var prevIdx = sb.length - 1
+                    val isOpening = (c == '}' && prevIdx >= 0 && sb[prevIdx] == '{') ||
+                                    (c == ']' && prevIdx >= 0 && sb[prevIdx] == '[')
+                    if (!isOpening) {
+                        if (level > 0) level--
+                        sb.append('\n')
+                        appendIndent(level)
+                    }
+                    sb.append(c)
+                }
+                ',' -> {
+                    sb.append(c)
+                    sb.append('\n')
+                    appendIndent(level)
+                }
+                ':' -> {
+                    sb.append(": ")
+                }
+                ' ', '\t', '\n', '\r' -> {
+                    // Skip unquoted whitespace
+                }
+                else -> {
+                    sb.append(c)
+                }
+            }
+            i++
+        }
+        return sb.toString()
     }
 
     fun highlightJsonSyntaxLines(

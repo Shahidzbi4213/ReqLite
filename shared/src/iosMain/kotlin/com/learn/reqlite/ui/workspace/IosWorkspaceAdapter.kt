@@ -309,6 +309,58 @@ class IosWorkspaceAdapter(
         }
     }
 
+    fun updateRequest(
+        requestId: String,
+        name: String? = null,
+        methodName: String,
+        url: String,
+        headers: List<RequestField> = emptyList(),
+        queryParams: List<RequestField> = emptyList(),
+        bodyContent: String? = null,
+        onUpdated: ((Request) -> Unit)? = null
+    ) {
+        scope.launch {
+            val existing = requestRepository.getRequestById(requestId)
+            val method = when (methodName.uppercase()) {
+                "POST" -> HttpMethod.POST
+                "PUT" -> HttpMethod.PUT
+                "DELETE" -> HttpMethod.DELETE
+                "PATCH" -> HttpMethod.PATCH
+                "HEAD" -> HttpMethod.HEAD
+                "OPTIONS" -> HttpMethod.OPTIONS
+                else -> HttpMethod.GET
+            }
+            val requestBody = if (!bodyContent.isNullOrBlank()) {
+                RequestBody.TextBody(bodyContent, "application/json")
+            } else {
+                RequestBody.NoBody
+            }
+            val now = com.learn.reqlite.utils.common.nowMs()
+            val req = (existing?.copy(
+                method = method,
+                url = url,
+                headers = headers,
+                queryParams = queryParams,
+                body = requestBody,
+                updatedAt = now
+            )) ?: Request(
+                id = requestId,
+                collectionId = "default",
+                folderId = null,
+                name = name ?: url,
+                method = method,
+                url = url,
+                headers = headers,
+                queryParams = queryParams,
+                body = requestBody,
+                createdAt = now,
+                updatedAt = now
+            )
+            requestRepository.insertRequest(req)
+            onUpdated?.invoke(req)
+        }
+    }
+
     fun deleteRequest(id: String) {
         scope.launch {
             requestRepository.deleteRequest(id)

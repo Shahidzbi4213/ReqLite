@@ -23,8 +23,6 @@ class WorkspaceHeaderTest {
                     onUrlChange = {},
                     method = "GET",
                     onMethodChange = {},
-                    onSend = {},
-                    onCancel = {}
                 )
             }
         }
@@ -45,9 +43,6 @@ class WorkspaceHeaderTest {
                     onUrlChange = {},
                     method = "GET",
                     onMethodChange = {},
-                    onSend = {},
-                    onCancel = {},
-                    isLoading = true
                 )
             }
         }

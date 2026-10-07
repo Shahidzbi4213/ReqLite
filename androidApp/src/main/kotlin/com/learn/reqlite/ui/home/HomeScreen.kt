@@ -19,7 +19,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.learn.reqlite.R
-import com.learn.reqlite.domain.model.Draft
 import com.learn.reqlite.domain.model.HistoryEntry
 import com.learn.reqlite.domain.parser.CurlParseResult
 import com.learn.reqlite.domain.parser.CurlParserImpl
@@ -63,14 +62,12 @@ fun HomeScreen(
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val recentRequests by viewModel.recentRequests.collectAsState()
-    val drafts by viewModel.drafts.collectAsState()
     val collections by viewModel.collections.collectAsState()
     val savedRequests by viewModel.savedRequests.collectAsState()
     val context = LocalContext.current
 
     HomeScreenContent(
         recentRequests = recentRequests,
-        drafts = drafts,
         collections = collections,
         savedRequests = savedRequests,
         onNavigateToRequest = onNavigateToRequest,
@@ -120,7 +117,6 @@ fun HomeScreen(
 @Composable
 fun HomeScreenContent(
     recentRequests: List<HistoryEntry>,
-    drafts: List<Draft>,
     collections: List<Collection> = emptyList(),
     savedRequests: List<Request> = emptyList(),
     onNavigateToRequest: (url: String?, method: String?, draftId: String?) -> Unit,
@@ -307,31 +303,6 @@ fun HomeScreenContent(
                     Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
                 }
             }
-
-            item {
-                Text(
-                    text = stringResource(R.string.drafts),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = MaterialTheme.spacing.small, bottom = MaterialTheme.spacing.extraSmall)
-                )
-            }
-
-            if (drafts.isEmpty()) {
-                item {
-                    EmptyStateCard(message = "No drafts saved.")
-                }
-            } else {
-                items(drafts, key = { it.id }) { draft ->
-                    RequestCard(
-                        method = draft.method.name,
-                        url = draft.url,
-                        onClick = { onNavigateToRequest(draft.url, draft.method.name, draft.id) }
-                    )
-                    Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
-                }
-            }
         }
 
         if (showCreateCollectionDialog) {
@@ -508,11 +479,6 @@ fun ImportPostmanDialog(
                         onClick = { selectedTab = 1 },
                         text = { Text("Paste JSON", style = MaterialTheme.typography.labelMedium) }
                     )
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = { Text("Sample", style = MaterialTheme.typography.labelMedium) }
-                    )
                 }
 
                 when (selectedTab) {
@@ -596,108 +562,6 @@ fun ImportPostmanDialog(
                                 textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                 isError = parseResult is PostmanParseResult.Error
                             )
-                        }
-                    }
-                    2 -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Surface(
-                                            shape = PillShape,
-                                            color = MaterialTheme.colorScheme.secondaryContainer
-                                        ) {
-                                            Text(
-                                                 text = "Sample 1",
-                                                 style = MaterialTheme.typography.labelSmall,
-                                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                 fontWeight = FontWeight.Bold,
-                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        Text(
-                                            text = "Tebyan Dua API",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Text(
-                                        text = "9 requests (Categories, Duas, Search) with configured {{url}} variable.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    FilledTonalButton(
-                                        onClick = {
-                                            jsonText = PostmanSampleCollections.TEBYAN_DUA_API_JSON
-                                            selectedFileName = "Tebyan Dua Api (Sample)"
-                                        },
-                                        shape = PillShape,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Load Tebyan Dua API")
-                                    }
-                                }
-                            }
-
-                            OutlinedCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Surface(
-                                            shape = PillShape,
-                                            color = MaterialTheme.colorScheme.primaryContainer
-                                        ) {
-                                            Text(
-                                                text = "Sample 2",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        Text(
-                                            text = "Tebyan Hadith APIs",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Text(
-                                        text = "7 requests using {{url}} placeholders without explicit definition.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Button(
-                                        onClick = {
-                                            jsonText = PostmanSampleCollections.TEBYAN_HADITH_APIS_JSON
-                                            selectedFileName = "Tebyan Hadith APIs (Sample)"
-                                        },
-                                        shape = PillShape,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Load Tebyan Hadith APIs")
-                                    }
-                                }
-                            }
                         }
                     }
                 }
