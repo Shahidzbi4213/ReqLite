@@ -183,6 +183,14 @@ Contributions are welcome! Whether it's reporting a bug, improving the documenta
 
 ---
 
+## 👨‍💻 Author
+
+Developed by **[Shahid Iqbal](https://shahid-iqbal.dev/)** — Senior Android & Kotlin Multiplatform Engineer.
+
+Connect: [Portfolio](https://shahid-iqbal.dev/) • [LinkedIn](https://www.linkedin.com/in/shahidzbi/) • [GitHub](https://github.com/Shahidzbi4213) • [X (Twitter)](https://x.com/shahidzbi)
+
+---
+
 ## 📄 License
 
 Distributed under the Apache 2.0 License. See [`LICENSE`](LICENSE) for more information.
