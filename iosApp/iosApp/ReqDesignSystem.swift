@@ -1188,62 +1188,600 @@ struct ReqAuthTabView: View {
     }
 }
 
+// MARK: - GraphQL & Body Types
+
+enum ReqGraphQLSubTab: String, CaseIterable, Identifiable, CustomStringConvertible {
+    case query = "Query"
+    case variables = "Variables"
+    var id: String { rawValue }
+    var description: String { rawValue }
+}
+
 struct ReqBodyTabView: View {
     @Binding var bodyText: String
+    var isGraphQL: Binding<Bool>? = nil
+    var variablesText: Binding<String>? = nil
+    var schema: GraphQLSchema? = nil
+    var isLoadingSchema: Bool = false
+    var onFetchSchema: (() -> Void)? = nil
+    var onFormatGraphQL: (() -> Void)? = nil
+    var onOpenExplorer: (() -> Void)? = nil
+    var getCompletions: ((Int) -> [GraphQLCompletionItem])? = nil
+
+    @State private var subTab: ReqGraphQLSubTab = .query
     @SwiftUI.Environment(\.colorScheme) private var colorScheme: ColorScheme
+
+    private var inGraphQLMode: Bool {
+        isGraphQL?.wrappedValue ?? false
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: ReqTokens.Spacing.xs) {
-            HStack {
-                Text("JSON Body")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
+            // Mode Selector Bar
+            HStack(spacing: ReqTokens.Spacing.xs) {
+                // Segmented control between JSON and GraphQL
+                HStack(spacing: 2) {
+                    Button {
+                        isGraphQL?.wrappedValue = false
+                    } label: {
+                        Text("JSON")
+                            .font(.system(size: 11, weight: !inGraphQLMode ? .bold : .medium))
+                            .foregroundColor(!inGraphQLMode ? .primary : .secondary)
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                            .background {
+                                if !inGraphQLMode {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(colorScheme == .dark ? Color.white.opacity(0.18) : Color.white)
+                                        .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        isGraphQL?.wrappedValue = true
+                        if bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || bodyText.contains("\"title\":") {
+                            bodyText = "query {\n  \n}"
+                        }
+                        if schema == nil {
+                            onFetchSchema?()
+                        }
+                    } label: {
+                        Text("GraphQL")
+                            .font(.system(size: 11, weight: inGraphQLMode ? .bold : .medium))
+                            .foregroundColor(inGraphQLMode ? .primary : .secondary)
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                            .background {
+                                if inGraphQLMode {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(colorScheme == .dark ? Color.white.opacity(0.18) : Color.white)
+                                        .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(2)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+
+                if inGraphQLMode {
+                    // Sub-tab switcher: Query vs Variables
+                    Picker("Tab", selection: $subTab) {
+                        ForEach(ReqGraphQLSubTab.allCases) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 160)
+                }
 
                 Spacer()
 
-                Button {
-                    if let data = bodyText.data(using: .utf8),
-                       let obj = try? JSONSerialization.jsonObject(with: data, options: []),
-                       let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
-                       let str = String(data: pretty, encoding: .utf8) {
-                        bodyText = str
-                    }
-                } label: {
-                    Text("Format")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.accentColor)
-                        .padding(.horizontal, ReqTokens.Spacing.xs)
-                        .frame(height: 24)
-                }
-                .buttonStyle(ReqGlassButtonStyle(variant: .quiet, cornerRadius: 6))
+                // Actions
+                if inGraphQLMode {
+                    if subTab == .query {
+                        Button {
+                            onFormatGraphQL?()
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 10))
+                                Text("Prettify")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, ReqTokens.Spacing.xs)
+                            .frame(height: 26)
+                        }
+                        .buttonStyle(ReqGlassButtonStyle(variant: .quiet, cornerRadius: 6))
 
-                Button {
-                    bodyText = ""
-                } label: {
-                    Text("Clear")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, ReqTokens.Spacing.xs)
-                        .frame(height: 24)
+                        if isLoadingSchema {
+                            HStack(spacing: 4) {
+                                ProgressView()
+                                    .controlSize(.mini)
+                                Text("Introspecting...")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, ReqTokens.Spacing.xs)
+                            .frame(height: 26)
+                        } else if schema != nil {
+                            Button {
+                                onOpenExplorer?()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(Color(red: 0.18, green: 0.80, blue: 0.44))
+                                        .frame(width: 6, height: 6)
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 10))
+                                    Text("Explorer")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, ReqTokens.Spacing.xs)
+                                .frame(height: 26)
+                            }
+                            .buttonStyle(ReqGlassButtonStyle(variant: .quiet, cornerRadius: 6))
+                        } else {
+                            Button {
+                                onFetchSchema?()
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 10))
+                                    Text("Introspect")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, ReqTokens.Spacing.xs)
+                                .frame(height: 26)
+                            }
+                            .buttonStyle(ReqGlassButtonStyle(variant: .quiet, cornerRadius: 6))
+                        }
+                    }
+                } else {
+                    Button {
+                        if let data = bodyText.data(using: .utf8),
+                           let obj = try? JSONSerialization.jsonObject(with: data, options: []),
+                           let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
+                           let str = String(data: pretty, encoding: .utf8) {
+                            bodyText = str
+                        }
+                    } label: {
+                        Text("Format")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, ReqTokens.Spacing.xs)
+                            .frame(height: 26)
+                    }
+                    .buttonStyle(ReqGlassButtonStyle(variant: .quiet, cornerRadius: 6))
+
+                    Button {
+                        bodyText = ""
+                    } label: {
+                        Text("Clear")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, ReqTokens.Spacing.xs)
+                            .frame(height: 26)
+                    }
+                    .buttonStyle(ReqGlassButtonStyle(variant: .quiet, cornerRadius: 6))
                 }
-                .buttonStyle(ReqGlassButtonStyle(variant: .quiet, cornerRadius: 6))
             }
 
-            TextEditor(text: $bodyText)
-                .font(.system(size: 13, design: .monospaced))
-                .autocorrectionDisabled(true)
-                .textInputAutocapitalization(.never)
-                .frame(minHeight: 100, maxHeight: 150)
-                .padding(4)
-                .scrollContentBackground(.hidden)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.75)
-                )
+            // GraphQL Autocomplete Chips Bar
+            if inGraphQLMode && subTab == .query {
+                let completions = getActiveCompletions()
+                if !completions.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(completions.prefix(12), id: \.label) { item in
+                                Button {
+                                    insertCompletion(item)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: iconForKind(item.kind))
+                                            .font(.system(size: 9))
+                                            .foregroundColor(colorForKind(item.kind))
+
+                                        Text(item.label)
+                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(.primary)
+
+                                        if !item.detail.isEmpty {
+                                            Text(item.detail)
+                                                .font(.system(size: 9, design: .monospaced))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.04))
+                                    )
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+
+            // Editor Area
+            if inGraphQLMode && subTab == .variables {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("JSON Variables (e.g. { \"id\": \"123\" })")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+
+                    TextEditor(text: Binding(
+                        get: { variablesText?.wrappedValue ?? "{}" },
+                        set: { variablesText?.wrappedValue = $0 }
+                    ))
+                    .font(.system(size: 13, design: .monospaced))
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
+                    .frame(minHeight: 110, maxHeight: 180)
+                    .padding(4)
+                    .scrollContentBackground(.hidden)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.primary.opacity(0.04))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.75)
+                    )
+                }
+            } else {
+                TextEditor(text: $bodyText)
+                    .font(.system(size: 13, design: .monospaced))
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
+                    .frame(minHeight: 110, maxHeight: 180)
+                    .padding(4)
+                    .scrollContentBackground(.hidden)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.primary.opacity(0.04))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.75)
+                    )
+            }
+        }
+        .padding(ReqTokens.Spacing.sm)
+        .reqGlass(.content, cornerRadius: ReqTokens.Radius.control)
+    }
+
+    private func getActiveCompletions() -> [GraphQLCompletionItem] {
+        if let getCompletions = getCompletions {
+            let cursor = bodyText.count
+            let items = getCompletions(cursor)
+            if !items.isEmpty {
+                return items
+            }
+        }
+        return [
+            GraphQLCompletionItem(label: "query", insertText: "query {\n  \n}", detail: "Operation", documentation: nil, kind: CompletionKind.keyword),
+            GraphQLCompletionItem(label: "mutation", insertText: "mutation {\n  \n}", detail: "Operation", documentation: nil, kind: CompletionKind.keyword),
+            GraphQLCompletionItem(label: "__typename", insertText: "__typename", detail: "Field", documentation: nil, kind: CompletionKind.field)
+        ]
+    }
+
+    private func insertCompletion(_ item: GraphQLCompletionItem) {
+        if bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            bodyText = item.insertText
+        } else if !bodyText.contains(item.insertText) {
+            if bodyText.contains("{") && bodyText.contains("}") {
+                if let lastBrace = bodyText.lastIndex(of: "}") {
+                    let prefix = bodyText[..<lastBrace]
+                    let suffix = bodyText[lastBrace...]
+                    bodyText = "\(prefix)  \(item.insertText)\n\(suffix)"
+                } else {
+                    bodyText += "\n\(item.insertText)"
+                }
+            } else {
+                bodyText += " \(item.insertText)"
+            }
+        }
+        onFormatGraphQL?()
+    }
+
+    private func iconForKind(_ kind: CompletionKind) -> String {
+        switch kind {
+        case .keyword: return "key"
+        case .field: return "square.stack.3d.down.forward"
+        case .argument: return "slider.horizontal.3"
+        case .type: return "tag"
+        case .directive: return "at"
+        default: return "sparkles"
+        }
+    }
+
+    private func colorForKind(_ kind: CompletionKind) -> Color {
+        switch kind {
+        case .keyword: return Color(red: 0.69, green: 0.32, blue: 0.87) // Purple
+        case .field: return Color(red: 0.18, green: 0.80, blue: 0.44) // Emerald
+        case .argument: return Color(red: 0.12, green: 0.53, blue: 0.98) // Blue
+        case .type: return Color(red: 1.0, green: 0.58, blue: 0.0) // Orange
+        default: return Color.secondary
+        }
+    }
+}
+
+// MARK: - Liquid Glass GraphQL Schema Explorer Sheet
+
+struct ReqGraphQLSchemaExplorerSheet: View {
+    let schema: GraphQLSchema
+    let onInsertSnippet: (String) -> Void
+    let onDismiss: () -> Void
+
+    @State private var searchQuery: String = ""
+    @State private var selectedTab: String = "All"
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme: ColorScheme
+
+    private var categories: [SchemaExplorerCategory] {
+        GraphQLSchemaExplorer.shared.filter(schema: schema, searchQuery: searchQuery)
+    }
+
+    private var availableTabs: [String] {
+        let titles = categories.map { $0.title }
+        return ["All"] + titles
+    }
+
+    private var displayedCategories: [SchemaExplorerCategory] {
+        if selectedTab == "All" {
+            return categories
+        }
+        return categories.filter { $0.title == selectedTab }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                ReqAmbientBackdrop()
+
+                VStack(spacing: ReqTokens.Spacing.sm) {
+                    // Search Bar
+                    HStack(spacing: ReqTokens.Spacing.xs) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 14))
+
+                        TextField("Search queries, mutations, types...", text: $searchQuery)
+                            .font(.system(size: 14))
+                            .autocorrectionDisabled(true)
+                            .textInputAutocapitalization(.never)
+
+                        if !searchQuery.isEmpty {
+                            Button {
+                                searchQuery = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 14))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, ReqTokens.Spacing.sm)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous)
+                            .fill(Color.primary.opacity(0.04))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.75)
+                    )
+                    .padding(.horizontal, ReqTokens.Spacing.md)
+
+                    // Category Filter Pills
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(availableTabs, id: \.self) { tab in
+                                let isSelected = selectedTab == tab
+                                Button {
+                                    selectedTab = tab
+                                } label: {
+                                    Text(tab)
+                                        .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                                        .foregroundColor(isSelected ? .white : .primary)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(isSelected ? Color.accentColor : Color.primary.opacity(0.05))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                    }
+
+                    // Content List
+                    if displayedCategories.isEmpty {
+                        VStack(spacing: 12) {
+                            Spacer()
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.system(size: 36))
+                                .foregroundColor(.secondary)
+                            Text("No matching schema items")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: ReqTokens.Spacing.md) {
+                                ForEach(displayedCategories, id: \.title) { cat in
+                                    VStack(alignment: .leading, spacing: ReqTokens.Spacing.xs) {
+                                        Text(cat.title.uppercased())
+                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal, ReqTokens.Spacing.xs)
+
+                                        ForEach(cat.items, id: \.id) { item in
+                                            SchemaItemCard(
+                                                item: item,
+                                                schema: schema,
+                                                onInsert: {
+                                                    if let snippet = generateSnippet(for: item) {
+                                                        onInsertSnippet(snippet)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+                            .padding(.bottom, ReqTokens.Spacing.xl)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Schema Explorer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        onDismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func generateSnippet(for item: SchemaExplorerItem) -> String? {
+        guard let field = item.rawField else { return nil }
+        let op: String
+        if item.kind == .mutation {
+            op = "mutation"
+        } else if item.kind == .subscription {
+            op = "subscription"
+        } else {
+            op = "query"
+        }
+        return GraphQLSchemaExplorer.shared.generateSnippet(field: field, schema: schema, operation: op)
+    }
+}
+
+// MARK: - Schema Item Card
+
+struct SchemaItemCard: View {
+    let item: SchemaExplorerItem
+    let schema: GraphQLSchema
+    let onInsert: () -> Void
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme: ColorScheme
+
+    private var kindColor: Color {
+        switch item.kind {
+        case .query: return Color(red: 0.18, green: 0.80, blue: 0.44)
+        case .mutation: return Color(red: 0.12, green: 0.53, blue: 0.98)
+        case .subscription: return Color(red: 0.69, green: 0.32, blue: 0.87)
+        case .objectType, .interfaceType, .unionType: return Color(red: 1.0, green: 0.58, blue: 0.0)
+        case .inputType: return Color(red: 0.95, green: 0.35, blue: 0.55)
+        default: return Color(red: 0.40, green: 0.73, blue: 0.85)
+        }
+    }
+
+    private var kindLabel: String {
+        switch item.kind {
+        case .query: return "QUERY"
+        case .mutation: return "MUTATION"
+        case .subscription: return "SUBSCRIPTION"
+        case .objectType: return "OBJECT"
+        case .inputType: return "INPUT"
+        case .enumType: return "ENUM"
+        case .scalarType: return "SCALAR"
+        case .interfaceType: return "INTERFACE"
+        case .unionType: return "UNION"
+        default: return "TYPE"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Header: Kind Badge + Name + Deprecation + Insert Button
+            HStack(spacing: 6) {
+                Text(kindLabel)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(kindColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(kindColor.opacity(0.12))
+                    .clipShape(Capsule())
+
+                Text(item.name)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.primary)
+
+                if item.isDeprecated {
+                    HStack(spacing: 2) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text("DEPRECATED")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundColor(Color(red: 1.0, green: 0.58, blue: 0.0))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 1.0, green: 0.58, blue: 0.0).opacity(0.12))
+                    .clipShape(Capsule())
+                }
+
+                Spacer()
+
+                if item.rawField != nil {
+                    Button {
+                        onInsert()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 11))
+                            Text("Insert")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.10))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Return Type / Detail
+            if !item.detail.isEmpty {
+                Text(item.detail)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            // Description
+            if let desc = item.description_, !desc.isEmpty {
+                Text(desc)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(3)
+            }
         }
         .padding(ReqTokens.Spacing.sm)
         .reqGlass(.content, cornerRadius: ReqTokens.Radius.control)

@@ -3,6 +3,8 @@ package com.learn.reqlite.ui.workspace
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.learn.reqlite.domain.engine.RequestExecutionEngine
+import com.learn.reqlite.domain.graphql.model.GraphQLSchema
+import com.learn.reqlite.domain.graphql.parser.GraphQLIntrospectionParser
 import com.learn.reqlite.domain.model.*
 import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.EnvironmentRepository
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.*
 
 data class PendingExecutionRequest(
     val draftId: String,
@@ -97,6 +100,12 @@ class WorkspaceViewModel(
 
     private val _activeRequestId = MutableStateFlow<String?>(null)
     val activeRequestId: StateFlow<String?> = _activeRequestId.asStateFlow()
+
+    private val _graphQLSchema = MutableStateFlow<GraphQLSchema?>(null)
+    val graphQLSchema: StateFlow<GraphQLSchema?> = _graphQLSchema.asStateFlow()
+
+    private val _isLoadingSchema = MutableStateFlow(false)
+    val isLoadingSchema: StateFlow<Boolean> = _isLoadingSchema.asStateFlow()
 
     private var activeExecutionJob: Job? = null
 
@@ -304,6 +313,28 @@ class WorkspaceViewModel(
                             }.joinToString("&")
                             header(HttpHeaders.ContentType, "application/x-www-form-urlencoded")
                             setBody(pairs)
+                        }
+                        is RequestBody.GraphQLBody -> {
+                            val resolvedQuery = variableResolver.resolve(reqBody.query, resolvedVariables)
+                            val resolvedVariablesJson = variableResolver.resolve(reqBody.variables, resolvedVariables)
+                            val payload = buildJsonObject {
+                                put("query", resolvedQuery)
+                                if (resolvedVariablesJson.isNotBlank()) {
+                                    val parsedVars = try {
+                                        Json.parseToJsonElement(resolvedVariablesJson)
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                    if (parsedVars != null) {
+                                        put("variables", parsedVars)
+                                    }
+                                }
+                                if (!reqBody.operationName.isNullOrBlank()) {
+                                    put("operationName", reqBody.operationName)
+                                }
+                            }.toString()
+                            header(HttpHeaders.ContentType, "application/json")
+                            setBody(payload)
                         }
                     }
                 }
@@ -581,6 +612,60 @@ class WorkspaceViewModel(
             _activeRequestId.value = request.id
             saveDraft()
             onSaved()
+        }
+    }
+
+    fun setGraphQLSchema(schema: GraphQLSchema?) {
+        _graphQLSchema.value = schema
+    }
+
+    fun fetchGraphQLSchema() {
+        val client = httpClient ?: return
+        val currentUrl = _url.value
+        if (currentUrl.isBlank()) return
+
+        viewModelScope.launch {
+            _isLoadingSchema.value = true
+            try {
+                val envVariables = _activeEnvironment.value?.id?.let { envId ->
+                    environmentRepository?.getEnvironmentById(envId)?.variables
+                } ?: emptyList()
+
+                val resolvedVariables = envVariables.map { variable ->
+                    if (variable.isSecret && secureStorage != null) {
+                        val secretVal = secureStorage.getSecret("env_var_${variable.id}")
+                        variable.copy(value = secretVal ?: "")
+                    } else {
+                        variable
+                    }
+                }
+
+                val targetUrl = variableResolver.resolve(currentUrl, resolvedVariables)
+
+                val payload = buildJsonObject {
+                    put("query", GraphQLIntrospectionParser.INTROSPECTION_QUERY)
+                }.toString()
+
+                val statement = client.request(targetUrl) {
+                    this.method = KtorHttpMethod.Post
+                    header(HttpHeaders.ContentType, "application/json")
+                    _headers.value.filter { it.isEnabled }.forEach { h ->
+                        header(
+                            variableResolver.resolve(h.key, resolvedVariables),
+                            variableResolver.resolve(h.value, resolvedVariables)
+                        )
+                    }
+                    setBody(payload)
+                }
+
+                val responseText = statement.bodyAsText()
+                val parsedSchema = GraphQLIntrospectionParser.parse(responseText)
+                _graphQLSchema.value = parsedSchema
+            } catch (_: Exception) {
+                // Introspection failure leaves existing schema intact
+            } finally {
+                _isLoadingSchema.value = false
+            }
         }
     }
 }

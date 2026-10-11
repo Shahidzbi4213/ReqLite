@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.learn.reqlite.domain.graphql.model.GraphQLSchema
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
 import com.learn.reqlite.ui.designsystem.components.ReqLiteTextField
@@ -26,6 +27,9 @@ fun RequestEditor(
     onHeadersChange: (List<RequestField>) -> Unit,
     onBodyChange: (RequestBody) -> Unit,
     onAuthChange: (AuthConfiguration) -> Unit,
+    schema: GraphQLSchema? = null,
+    onFetchSchema: (() -> Unit)? = null,
+    isLoadingSchema: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var selectedTabIndex by remember { mutableStateOf(0) }
@@ -65,7 +69,10 @@ fun RequestEditor(
                 )
                 3 -> RequestBodyEditor(
                     body = body,
-                    onBodyChange = onBodyChange
+                    onBodyChange = onBodyChange,
+                    schema = schema,
+                    onFetchSchema = onFetchSchema,
+                    isLoadingSchema = isLoadingSchema
                 )
             }
         }

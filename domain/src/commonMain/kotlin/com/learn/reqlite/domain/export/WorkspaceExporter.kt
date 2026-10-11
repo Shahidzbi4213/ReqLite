@@ -498,6 +498,12 @@ class WorkspaceExportImportManager(
                 type = "URL_ENCODED",
                 fields = fields.map { it.toExportDto() }
             )
+            is RequestBody.GraphQLBody -> ExportRequestBodyDto(
+                type = "GRAPHQL",
+                query = query,
+                variables = variables,
+                operationName = operationName
+            )
         }
     }
 
@@ -512,6 +518,11 @@ class WorkspaceExportImportManager(
             )
             "URL_ENCODED" -> RequestBody.UrlEncodedBody(
                 fields = fields.map { it.toDomain() }
+            )
+            "GRAPHQL" -> RequestBody.GraphQLBody(
+                query = query ?: content ?: "",
+                variables = variables ?: "{}",
+                operationName = operationName
             )
             else -> RequestBody.NoBody
         }
