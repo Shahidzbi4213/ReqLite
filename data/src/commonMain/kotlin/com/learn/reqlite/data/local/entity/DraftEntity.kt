@@ -25,5 +25,7 @@ data class DraftEntity(
     val requestId: String? = null,
     val method: String,
     val url: String,
+    val preRequestScript: String? = null,
+    val testScript: String? = null,
     val updatedAt: Long
 )

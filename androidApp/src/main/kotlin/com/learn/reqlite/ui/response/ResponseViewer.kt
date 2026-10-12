@@ -29,9 +29,17 @@ fun ResponseViewer(
         )
     }
 
+    val testTitle = if (response.testResults.isNotEmpty()) {
+        val passed = response.testResults.count { it.passed }
+        "Tests ($passed/${response.testResults.size})"
+    } else {
+        "Tests"
+    }
+
     val tabs = listOf(
         "Body",
         if (response.headers.isNotEmpty()) "Headers (${response.headers.size})" else "Headers",
+        testTitle,
         "Summary"
     )
 
@@ -107,6 +115,12 @@ fun ResponseViewer(
                     ResponseHeadersView(headers = response.headers)
                 }
                 2 -> {
+                    ResponseTestsView(
+                        testResults = response.testResults,
+                        scriptLogs = response.scriptLogs
+                    )
+                }
+                3 -> {
                     ResponseSummaryView(response = response)
                 }
             }

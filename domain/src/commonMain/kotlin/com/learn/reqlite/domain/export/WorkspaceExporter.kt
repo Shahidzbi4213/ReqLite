@@ -262,6 +262,8 @@ class WorkspaceExportImportManager(
                         headers = reqDto.headers.map { it.toDomain() },
                         queryParams = reqDto.queryParams.map { it.toDomain() },
                         body = reqDto.body.toDomain(),
+                        preRequestScript = reqDto.preRequestScript,
+                        testScript = reqDto.testScript,
                         createdAt = if (reqDto.createdAt > 0) reqDto.createdAt else 1000L,
                         updatedAt = if (reqDto.updatedAt > 0) reqDto.updatedAt else 1000L
                     )
@@ -662,6 +664,8 @@ class WorkspaceExportImportManager(
             headers = headers.map { it.toExportDto() },
             queryParams = queryParams.map { it.toExportDto() },
             body = body.toExportDto(),
+            preRequestScript = preRequestScript,
+            testScript = testScript,
             createdAt = createdAt,
             updatedAt = updatedAt
         )

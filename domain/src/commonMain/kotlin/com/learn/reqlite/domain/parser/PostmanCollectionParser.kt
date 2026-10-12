@@ -231,6 +231,7 @@ class PostmanCollectionParserImpl(
                 // Request
                 val request = parseRequest(
                     requestElement = requestElement,
+                    eventElement = itemObj["event"] ?: (requestElement as? JsonObject)?.get("event"),
                     name = itemName,
                     itemDescription = itemDesc,
                     collectionId = collectionId,
@@ -246,6 +247,7 @@ class PostmanCollectionParserImpl(
 
     private fun parseRequest(
         requestElement: JsonElement,
+        eventElement: JsonElement? = null,
         name: String,
         itemDescription: String?,
         collectionId: String,
@@ -254,6 +256,7 @@ class PostmanCollectionParserImpl(
     ): Request? {
         val now = 1000L + idCounter++
         val requestId = "req_pm_${now}_${(1000..9999).random()}"
+        val (preRequestScript, testScript) = parseScripts(eventElement)
 
         when (requestElement) {
             is JsonObject -> {
@@ -289,6 +292,8 @@ class PostmanCollectionParserImpl(
                     headers = headers,
                     queryParams = queryParams,
                     body = body,
+                    preRequestScript = preRequestScript,
+                    testScript = testScript,
                     createdAt = now,
                     updatedAt = now
                 )
@@ -306,11 +311,37 @@ class PostmanCollectionParserImpl(
                     headers = emptyList(),
                     queryParams = queryParams,
                     body = RequestBody.NoBody,
+                    preRequestScript = preRequestScript,
+                    testScript = testScript,
                     createdAt = now,
                     updatedAt = now
                 )
             }
         }
+    }
+
+    private fun parseScripts(eventElement: JsonElement?): Pair<String?, String?> {
+        val eventArray = eventElement as? JsonArray ?: return Pair(null, null)
+        var preRequestScript: String? = null
+        var testScript: String? = null
+
+        for (item in eventArray) {
+            val obj = item as? JsonObject ?: continue
+            val listen = obj["listen"].asString()?.lowercase() ?: continue
+            val scriptObj = obj["script"] as? JsonObject ?: continue
+            val exec = scriptObj["exec"]
+            val scriptContent = when (exec) {
+                is JsonArray -> exec.mapNotNull { it.asString() }.joinToString("\n").ifBlank { null }
+                is JsonPrimitive -> exec.asString()?.ifBlank { null }
+                else -> null
+            }
+            if (listen == "prerequest") {
+                preRequestScript = scriptContent
+            } else if (listen == "test") {
+                testScript = scriptContent
+            }
+        }
+        return Pair(preRequestScript, testScript)
     }
 
     private fun parseUrl(urlElement: JsonElement?): Pair<String, List<RequestField>> {

@@ -245,6 +245,22 @@ struct WorkspaceView: View {
                                         onOpenExplorer: { viewModel.showingSchemaExplorer = true },
                                         getCompletions: { cursor in viewModel.getGraphQLCompletions(cursorPosition: cursor) }
                                     )
+                                case .preRequest:
+                                    ReqScriptTabView(
+                                        title: "Pre-request Script",
+                                        description: "Executes before dispatch. Mutate headers, params, or environment using reqlite.* or pm.*",
+                                        scriptText: $viewModel.preRequestScript,
+                                        snippets: viewModel.getPreRequestSnippets(),
+                                        onInsertSnippet: { viewModel.insertPreRequestSnippet($0) }
+                                    )
+                                case .tests:
+                                    ReqScriptTabView(
+                                        title: "Test Script",
+                                        description: "Executes after response. Validate data using pm.test(), pm.expect(), or reqlite.test()",
+                                        scriptText: $viewModel.testScript,
+                                        snippets: viewModel.getTestSnippets(),
+                                        onInsertSnippet: { viewModel.insertTestSnippet($0) }
+                                    )
                                 }
                             }
                             .padding(.horizontal, ReqTokens.Spacing.md)
@@ -354,11 +370,13 @@ struct WorkspaceView: View {
                         }
                     }
                 )) {
-                    if case .success(let history, let responseBody, let responseHeaders) = viewModel.executionState {
+                    if case .success(let history, let responseBody, let responseHeaders, let testResults, let scriptLogs) = viewModel.executionState {
                         FullScreenResponseView(
                             history: history,
                             responseBody: responseBody,
                             responseHeaders: responseHeaders,
+                            testResults: testResults,
+                            scriptLogs: scriptLogs,
                             responseTab: $viewModel.responseTab
                         )
                     }

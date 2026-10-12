@@ -63,7 +63,8 @@ val dataModule = module {
             secureStorage = get(),
             variableResolver = get(),
             requestValidator = get(),
-            historyRepository = get()
+            historyRepository = get(),
+            scriptEngine = get()
         )
     }
 }

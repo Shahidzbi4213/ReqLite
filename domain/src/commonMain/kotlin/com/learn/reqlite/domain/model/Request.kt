@@ -10,6 +10,8 @@ data class Request(
     val headers: List<RequestField> = emptyList(),
     val queryParams: List<RequestField> = emptyList(),
     val body: RequestBody = RequestBody.NoBody,
+    val preRequestScript: String? = null,
+    val testScript: String? = null,
     val createdAt: Long,
     val updatedAt: Long
 )

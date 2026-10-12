@@ -18,6 +18,8 @@ fun DraftEntity.toDomain(
         headers = fields.filter { it.type == "HEADER" }.map { it.toDomain() },
         queryParams = fields.filter { it.type == "QUERY_PARAM" }.map { it.toDomain() },
         body = body?.toDomain(fields) ?: com.learn.reqlite.domain.model.RequestBody.NoBody,
+        preRequestScript = this.preRequestScript,
+        testScript = this.testScript,
         updatedAt = this.updatedAt
     )
 }
@@ -28,6 +30,8 @@ fun Draft.toEntity(): DraftEntity {
         requestId = this.requestId,
         method = this.method.name,
         url = this.url,
+        preRequestScript = this.preRequestScript,
+        testScript = this.testScript,
         updatedAt = this.updatedAt
     )
 }

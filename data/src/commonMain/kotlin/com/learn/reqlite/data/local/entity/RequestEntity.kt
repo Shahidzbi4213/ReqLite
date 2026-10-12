@@ -34,6 +34,8 @@ data class RequestEntity(
     val name: String,
     val method: String,
     val url: String,
+    val preRequestScript: String? = null,
+    val testScript: String? = null,
     val createdAt: Long,
     val updatedAt: Long
 )

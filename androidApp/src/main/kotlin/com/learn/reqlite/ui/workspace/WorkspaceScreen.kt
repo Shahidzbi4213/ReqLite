@@ -61,6 +61,8 @@ fun WorkspaceScreen(
     val activeRequestId by viewModel.activeRequestId.collectAsState()
     val graphQLSchema by viewModel.graphQLSchema.collectAsState()
     val isLoadingSchema by viewModel.isLoadingSchema.collectAsState()
+    val preRequestScript by viewModel.preRequestScript.collectAsState()
+    val testScript by viewModel.testScript.collectAsState()
     var showCurlDialog by remember { mutableStateOf(false) }
     var showSaveCollectionDialog by remember { mutableStateOf(false) }
 
@@ -233,6 +235,14 @@ fun WorkspaceScreen(
                             schema = graphQLSchema,
                             onFetchSchema = { viewModel.fetchGraphQLSchema() },
                             isLoadingSchema = isLoadingSchema,
+                            preRequestScript = preRequestScript,
+                            testScript = testScript,
+                            onPreRequestScriptChange = { viewModel.setPreRequestScript(it) },
+                            onTestScriptChange = { viewModel.setTestScript(it) },
+                            preRequestSnippets = viewModel.preRequestSnippets,
+                            testSnippets = viewModel.testSnippets,
+                            onInsertPreRequestSnippet = { viewModel.insertPreRequestSnippet(it.code) },
+                            onInsertTestSnippet = { viewModel.insertTestSnippet(it.code) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -271,6 +281,14 @@ fun WorkspaceScreen(
                             schema = graphQLSchema,
                             onFetchSchema = { viewModel.fetchGraphQLSchema() },
                             isLoadingSchema = isLoadingSchema,
+                            preRequestScript = preRequestScript,
+                            testScript = testScript,
+                            onPreRequestScriptChange = { viewModel.setPreRequestScript(it) },
+                            onTestScriptChange = { viewModel.setTestScript(it) },
+                            preRequestSnippets = viewModel.preRequestSnippets,
+                            testSnippets = viewModel.testSnippets,
+                            onInsertPreRequestSnippet = { viewModel.insertPreRequestSnippet(it.code) },
+                            onInsertTestSnippet = { viewModel.insertTestSnippet(it.code) },
                             modifier = Modifier.weight(1f)
                         )
                     }

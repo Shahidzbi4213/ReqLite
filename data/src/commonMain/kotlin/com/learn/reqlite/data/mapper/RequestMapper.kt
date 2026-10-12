@@ -23,6 +23,8 @@ fun RequestEntity.toDomain(
         headers = fields.filter { it.type == "HEADER" }.map { it.toDomain() },
         queryParams = fields.filter { it.type == "QUERY_PARAM" }.map { it.toDomain() },
         body = bodyEntity?.toDomain(fields) ?: RequestBody.NoBody,
+        preRequestScript = preRequestScript,
+        testScript = testScript,
         createdAt = createdAt,
         updatedAt = updatedAt
     )
@@ -36,6 +38,8 @@ fun Request.toEntity(): RequestEntity {
         name = name,
         method = method.name,
         url = url,
+        preRequestScript = preRequestScript,
+        testScript = testScript,
         createdAt = createdAt,
         updatedAt = updatedAt
     )

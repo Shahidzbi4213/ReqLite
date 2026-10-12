@@ -53,7 +53,7 @@ struct ResponseStateView: View {
                 .padding(ReqTokens.Spacing.md)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            case .success(let history, let responseBody, let responseHeaders):
+            case .success(let history, let responseBody, let responseHeaders, let testResults, let scriptLogs):
                 let code = history.statusCode?.intValue ?? 0
                 let duration = history.durationMs?.int64Value ?? 0
 
@@ -63,6 +63,7 @@ struct ResponseStateView: View {
                         statusCode: code,
                         statusText: statusText(for: code),
                         durationMs: duration,
+                        testResults: testResults,
                         responseTab: $responseTab
                     )
                     .padding(.horizontal, ReqTokens.Spacing.md)
@@ -181,6 +182,9 @@ struct ResponseStateView: View {
                                 }
                                 .padding(ReqTokens.Spacing.md)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                            case .tests:
+                                ReqTestsResultView(testResults: testResults, scriptLogs: scriptLogs)
                             }
                         }
                     }
@@ -268,6 +272,8 @@ struct FullScreenResponseView: View {
     let history: HistoryEntry
     let responseBody: String
     var responseHeaders: [String: String] = [:]
+    var testResults: [IosTestResult] = []
+    var scriptLogs: [String] = []
     @Binding var responseTab: WorkspaceViewModel.ResponseTab
 
     @State private var searchQuery: String = ""
@@ -284,6 +290,7 @@ struct FullScreenResponseView: View {
                 statusCode: code,
                 statusText: statusText(for: code),
                 durationMs: duration,
+                testResults: testResults,
                 responseTab: $responseTab
             )
             .padding(.horizontal, ReqTokens.Spacing.md)
@@ -402,6 +409,9 @@ struct FullScreenResponseView: View {
                         }
                         .padding(ReqTokens.Spacing.md)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    case .tests:
+                        ReqTestsResultView(testResults: testResults, scriptLogs: scriptLogs)
                     }
                 }
             }
@@ -450,6 +460,161 @@ struct FullScreenResponseView: View {
         case 500: return "Internal Server Error"
         default: return ""
         }
+    }
+}
+
+// MARK: - Test Assertions Results View
+
+struct ReqTestsResultView: View {
+    let testResults: [IosTestResult]
+    let scriptLogs: [String]
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme: ColorScheme
+
+    private var passedCount: Int {
+        testResults.filter { $0.passed }.count
+    }
+
+    private var failedCount: Int {
+        testResults.filter { !$0.passed }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ReqTokens.Spacing.sm) {
+            if testResults.isEmpty {
+                ReqEmptyStateView(
+                    icon: "checkmark.shield",
+                    title: "No Tests Executed",
+                    subtitle: "Add assertions in the Tests tab using pm.test() or reqlite.test() to automatically validate responses."
+                )
+                .padding(.vertical, ReqTokens.Spacing.lg)
+            } else {
+                // Header Scoreboard Card
+                HStack(spacing: ReqTokens.Spacing.sm) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Test Results")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.primary)
+                        Text("\(testResults.count) total assertion\(testResults.count == 1 ? "" : "s") executed")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                            Text("\(passedCount) Passed")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.green)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.12))
+                        .clipShape(Capsule())
+
+                        if failedCount > 0 {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 6, height: 6)
+                                Text("\(failedCount) Failed")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.red)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.red.opacity(0.12))
+                            .clipShape(Capsule())
+                        }
+                    }
+                }
+                .padding(ReqTokens.Spacing.sm)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+
+                // Test Assertions List
+                VStack(spacing: ReqTokens.Spacing.xs) {
+                    ForEach(Array(testResults.enumerated()), id: \.offset) { _, result in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
+                                Image(systemName: result.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(result.passed ? .green : .red)
+
+                                Text(result.name)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.primary)
+
+                                Spacer()
+
+                                if result.durationMs > 0 {
+                                    Text("\(result.durationMs)ms")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Text(result.passed ? "PASS" : "FAIL")
+                                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                                    .foregroundColor(result.passed ? .green : .red)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(result.passed ? Color.green.opacity(0.12) : Color.red.opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            }
+
+                            if let error = result.errorMessage, !error.isEmpty {
+                                Text(error)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.red)
+                                    .padding(.leading, 22)
+                                    .padding(.top, 2)
+                            }
+                        }
+                        .padding(ReqTokens.Spacing.sm)
+                        .background(
+                            RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous)
+                                .fill(result.passed ? Color.green.opacity(0.04) : Color.red.opacity(0.06))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous)
+                                .strokeBorder(result.passed ? Color.green.opacity(0.18) : Color.red.opacity(0.25), lineWidth: 0.75)
+                        )
+                    }
+                }
+            }
+
+            // Script Console Logs
+            if !scriptLogs.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("CONSOLE LOGS (\(scriptLogs.count))")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .padding(.top, ReqTokens.Spacing.xs)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(scriptLogs.enumerated()), id: \.offset) { _, log in
+                            Text(log)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.primary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(ReqTokens.Spacing.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(uiColor: .tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+                }
+            }
+        }
+        .padding(ReqTokens.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
