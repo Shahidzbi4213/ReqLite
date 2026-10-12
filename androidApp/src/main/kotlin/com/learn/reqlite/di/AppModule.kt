@@ -17,6 +17,9 @@ val appModule = module {
             requestRepository = get(),
             collectionRepository = get(),
             workspaceImporter = getOrNull(),
+            postmanParser = get(),
+            insomniaParser = get(),
+            workspaceExporter = getOrNull(),
             environmentRepository = getOrNull()
         )
     }

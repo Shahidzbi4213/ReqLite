@@ -48,9 +48,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.Intent
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.text.AnnotatedString
 import com.learn.reqlite.domain.model.Collection
 import com.learn.reqlite.domain.model.Request
 import com.learn.reqlite.domain.model.Variable
+import com.learn.reqlite.domain.parser.InsomniaCollectionParserImpl
+import com.learn.reqlite.domain.parser.InsomniaParseResult
 import com.learn.reqlite.domain.parser.PostmanCollectionParserImpl
 import com.learn.reqlite.domain.parser.PostmanParseResult
 
@@ -108,6 +114,33 @@ fun HomeScreen(
                 }
             }
         },
+        onImportUniversal = { json ->
+            viewModel.importUniversal(json) { result ->
+                if (result.isSuccess) {
+                    val res = result.getOrNull()
+                    val reqCount = res?.requestsImported ?: 0
+                    val colCount = res?.collectionsImported ?: 0
+                    val envCount = res?.environmentsImported ?: 0
+                    val msg = buildString {
+                        append("Imported $reqCount request(s)")
+                        if (colCount > 0) append(" in $colCount collection(s)")
+                        if (envCount > 0) append(" and $envCount environment(s)")
+                        append("!")
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                } else {
+                    val msg = result.exceptionOrNull()?.message ?: "Import failed"
+                    Toast.makeText(context, "Import failed: $msg", Toast.LENGTH_LONG).show()
+                }
+            }
+        },
+        onExportWorkspace = { includeSecrets, colId ->
+            if (colId != null) {
+                viewModel.exportCollection(colId)
+            } else {
+                viewModel.exportWorkspace(includeSecrets = includeSecrets)
+            }
+        },
         onParsePostmanCollection = { json -> viewModel.parsePostmanCollection(json) },
         modifier = modifier
     )
@@ -126,6 +159,8 @@ fun HomeScreenContent(
     onDeleteRequest: (String) -> Unit = {},
     onOpenSavedRequest: (Request) -> Unit = {},
     onImportPostmanCollection: (String, List<Variable>?) -> Unit = { _, _ -> },
+    onImportUniversal: (String) -> Unit = {},
+    onExportWorkspace: suspend (includeSecrets: Boolean, collectionId: String?) -> Result<String> = { _, _ -> Result.success("{}") },
     onParsePostmanCollection: suspend (String) -> PostmanParseResult = { json ->
         withContext(Dispatchers.Default) {
             PostmanCollectionParserImpl().parse(json)
@@ -137,6 +172,8 @@ fun HomeScreenContent(
     var curlCommand by remember { mutableStateOf("") }
     var showCreateCollectionDialog by remember { mutableStateOf(false) }
     var showImportPostmanDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var selectedExportCollectionId by remember { mutableStateOf<String?>(null) }
     var newCollectionName by remember { mutableStateOf("") }
     val expandedCollectionIds = remember { mutableStateListOf<String>() }
 
@@ -227,7 +264,23 @@ fun HomeScreenContent(
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Import Postman", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Import", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                selectedExportCollectionId = null
+                                showExportDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = PillShape
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Export", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                         }
                         OutlinedButton(
                             onClick = { showCreateCollectionDialog = true },
@@ -271,7 +324,11 @@ fun HomeScreenContent(
                         },
                         onOpenRequest = onOpenSavedRequest,
                         onDeleteRequest = onDeleteRequest,
-                        onDeleteCollection = { onDeleteCollection(collection) }
+                        onDeleteCollection = { onDeleteCollection(collection) },
+                        onExportCollection = {
+                            selectedExportCollectionId = collection.id
+                            showExportDialog = true
+                        }
                     )
                     Spacer(modifier = Modifier.height(MaterialTheme.spacing.small))
                 }
@@ -356,9 +413,24 @@ fun HomeScreenContent(
                 onDismiss = { showImportPostmanDialog = false },
                 onImport = { json, customVars ->
                     showImportPostmanDialog = false
-                    onImportPostmanCollection(json, customVars)
+                    if (json.contains("\"_type\"") && (json.contains("\"export_format\"") || json.contains("\"resources\""))) {
+                        onImportUniversal(json)
+                    } else if (json.contains("\"collections\"") || json.contains("\"schemaVersion\"")) {
+                        onImportUniversal(json)
+                    } else {
+                        onImportPostmanCollection(json, customVars)
+                    }
                 },
                 onParseJson = onParsePostmanCollection
+            )
+        }
+
+        if (showExportDialog) {
+            ExportWorkspaceDialog(
+                collections = collections,
+                targetCollectionId = selectedExportCollectionId,
+                onDismiss = { showExportDialog = false },
+                onExport = onExportWorkspace
             )
         }
     }
@@ -406,8 +478,37 @@ fun ImportPostmanDialog(
         }
     }
 
+    var detectedFormat by remember { mutableStateOf("Postman") }
+
     LaunchedEffect(jsonText) {
         if (jsonText.isNotBlank()) {
+            if (jsonText.contains("\"_type\"") && (jsonText.contains("\"export_format\"") || jsonText.contains("\"resources\""))) {
+                val insResult = withContext(Dispatchers.Default) {
+                    InsomniaCollectionParserImpl().parse(jsonText)
+                }
+                if (insResult is InsomniaParseResult.Success) {
+                    detectedFormat = "Insomnia"
+                    val allVars = insResult.environments.flatMap { it.variables }
+                    parseResult = PostmanParseResult.Success(
+                        collection = insResult.collection,
+                        folders = insResult.folders,
+                        requests = insResult.requests,
+                        variables = allVars,
+                        warnings = insResult.warnings
+                    )
+                    editedVariables.clear()
+                    allVars.forEach { v ->
+                        editedVariables[v.key] = v.value
+                    }
+                    return@LaunchedEffect
+                } else if (insResult is InsomniaParseResult.Error) {
+                    detectedFormat = "Insomnia"
+                    parseResult = PostmanParseResult.Error(insResult.message)
+                    editedVariables.clear()
+                    return@LaunchedEffect
+                }
+            }
+            detectedFormat = "Postman"
             val res = onParseJson(jsonText)
             parseResult = res
             if (res is PostmanParseResult.Success) {
@@ -417,6 +518,7 @@ fun ImportPostmanDialog(
                 }
             }
         } else {
+            detectedFormat = "Postman"
             parseResult = null
             editedVariables.clear()
         }
@@ -445,12 +547,12 @@ fun ImportPostmanDialog(
                 }
                 Column {
                     Text(
-                        text = "Import Postman Collection",
+                        text = "Import Collection",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = "v2.0 & v2.1 with Environment Variables",
+                        text = if (detectedFormat == "Insomnia") "Insomnia v4/v5 Format" else "Postman v2.0 & v2.1 Format",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -786,6 +888,245 @@ fun ImportPostmanDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun ExportWorkspaceDialog(
+    collections: List<Collection>,
+    targetCollectionId: String? = null,
+    onDismiss: () -> Unit,
+    onExport: suspend (includeSecrets: Boolean, collectionId: String?) -> Result<String>
+) {
+    var includeSecrets by remember { mutableStateOf(false) }
+    var selectedScopeIndex by remember { mutableIntStateOf(if (targetCollectionId != null) 1 else 0) }
+    var selectedCollectionId by remember { mutableStateOf(targetCollectionId ?: collections.firstOrNull()?.id ?: "") }
+    var exportedJson by remember { mutableStateOf<String?>(null) }
+    var isExporting by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Column {
+                    Text(
+                        text = "Export Workspace",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "ReqLite Workspace JSON format",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (collections.isNotEmpty()) {
+                    Text("Export Scope", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = selectedScopeIndex == 0,
+                            onClick = {
+                                selectedScopeIndex = 0
+                                exportedJson = null
+                            },
+                            label = { Text("Entire Workspace") }
+                        )
+                        FilterChip(
+                            selected = selectedScopeIndex == 1,
+                            onClick = {
+                                selectedScopeIndex = 1
+                                exportedJson = null
+                            },
+                            label = { Text("Single Collection") }
+                        )
+                    }
+
+                    if (selectedScopeIndex == 1) {
+                        Text("Select Collection", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(collections, key = { it.id }) { col ->
+                                FilterChip(
+                                    selected = selectedCollectionId == col.id,
+                                    onClick = {
+                                        selectedCollectionId = col.id
+                                        exportedJson = null
+                                    },
+                                    label = { Text(col.name, maxLines = 1) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Include Secret Variables", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Text(
+                                "When disabled, secret values and API keys are masked.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = includeSecrets,
+                            onCheckedChange = {
+                                includeSecrets = it
+                                exportedJson = null
+                            }
+                        )
+                    }
+                }
+
+                if (exportedJson == null) {
+                    Button(
+                        onClick = {
+                            isExporting = true
+                            errorMessage = null
+                            coroutineScope.launch {
+                                val colId = if (selectedScopeIndex == 1) selectedCollectionId else null
+                                val result = onExport(includeSecrets, colId)
+                                isExporting = false
+                                if (result.isSuccess) {
+                                    exportedJson = result.getOrNull()
+                                } else {
+                                    errorMessage = result.exceptionOrNull()?.message ?: "Export failed"
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isExporting
+                    ) {
+                        if (isExporting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text("Generate Export JSON")
+                    }
+                } else {
+                    val json = exportedJson!!
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Export Ready (${json.length} characters)",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        OutlinedTextField(
+                            value = json,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(json))
+                                    Toast.makeText(context, "Copied JSON to clipboard", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(painter = painterResource(R.drawable.ic_save_collection), contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Copy JSON")
+                            }
+
+                            FilledTonalButton(
+                                onClick = {
+                                    val sendIntent = Intent().apply {
+                                        action = Intent.ACTION_SEND
+                                        putExtra(Intent.EXTRA_TEXT, json)
+                                        type = "application/json"
+                                    }
+                                    val shareIntent = Intent.createChooser(sendIntent, "Share ReqLite Workspace Export")
+                                    context.startActivity(shareIntent)
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Share...")
+                            }
+                        }
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
             }
         }
     )
@@ -1241,6 +1582,7 @@ fun CollectionCard(
     onOpenRequest: (Request) -> Unit,
     onDeleteRequest: (String) -> Unit,
     onDeleteCollection: () -> Unit,
+    onExportCollection: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     ElevatedCard(
@@ -1294,6 +1636,20 @@ fun CollectionCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
+                }
+
+                if (onExportCollection != null) {
+                    IconButton(
+                        onClick = onExportCollection,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Export Collection",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
                 IconButton(

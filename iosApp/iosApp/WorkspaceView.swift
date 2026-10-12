@@ -126,8 +126,8 @@ struct WorkspaceView: View {
                         Button {
                             viewModel.showingNewCollectionAlert = true
                         } label: {
-                            Label("New Collection", systemImage: "plus")
-                                .font(.system(size: 13, weight: .medium))
+                            Label("New", systemImage: "plus")
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(Color.accentColor)
                         }
                         .buttonStyle(.plain)
@@ -137,10 +137,24 @@ struct WorkspaceView: View {
                         Button {
                             viewModel.showingImportPostmanSheet = true
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 3) {
                                 Image(systemName: "square.and.arrow.down")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.system(size: 11, weight: .medium))
                                 Text("Import")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            viewModel.selectedCollectionForExport = nil
+                            viewModel.showingExportSheet = true
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 11, weight: .medium))
+                                Text("Export")
                                     .font(.system(size: 12, weight: .medium))
                             }
                             .foregroundColor(Color.accentColor)
@@ -409,10 +423,20 @@ struct WorkspaceView: View {
                     ReqImportPostmanSheet(
                         isPresented: $viewModel.showingImportPostmanSheet,
                         onPreview: { json, completion in
-                            viewModel.previewPostmanCollection(json, completion: completion)
+                            viewModel.previewUniversal(json, completion: completion)
                         },
                         onImport: { json, completion in
-                            viewModel.importPostmanCollection(json, completion: completion)
+                            viewModel.importUniversal(json, completion: completion)
+                        }
+                    )
+                }
+                .sheet(isPresented: $viewModel.showingExportSheet) {
+                    ReqExportWorkspaceSheet(
+                        isPresented: $viewModel.showingExportSheet,
+                        targetCollection: viewModel.selectedCollectionForExport,
+                        collections: viewModel.collections,
+                        onExport: { includeSecrets, colId, completion in
+                            viewModel.exportWorkspace(includeSecrets: includeSecrets, collectionId: colId, completion: completion)
                         }
                     )
                 }
@@ -628,13 +652,14 @@ struct ReqPasteCurlSheet: View {
     }
 }
 
-// MARK: - Postman Collection Import Sheet
+// MARK: - Universal Collection & Workspace Import Sheet
 struct ReqImportPostmanSheet: View {
     @Binding var isPresented: Bool
-    let onPreview: (String, @escaping (String?, Int, Int, String?) -> Void) -> Void
+    let onPreview: (String, @escaping (String?, String?, Int, Int, String?) -> Void) -> Void
     let onImport: (String, @escaping (Bool, String) -> Void) -> Void
 
     @State private var jsonText: String = ""
+    @State private var previewFormat: String? = nil
     @State private var previewName: String? = nil
     @State private var previewRequestsCount: Int = 0
     @State private var previewFoldersCount: Int = 0
@@ -642,11 +667,24 @@ struct ReqImportPostmanSheet: View {
     @State private var isImporting: Bool = false
     @State private var errorMessage: String? = nil
 
+    private func badgeColor(for format: String?) -> Color {
+        switch format {
+        case "Insomnia":
+            return .purple
+        case "Postman":
+            return .orange
+        case "ReqLite Workspace":
+            return Color.accentColor
+        default:
+            return .green
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: ReqTokens.Spacing.sm) {
-                    Text("Paste a Postman Collection (v2.0 or v2.1 JSON) to import its requests, nested folders, headers, and parameters.")
+                    Text("Paste an Insomnia (v4/v5 JSON), Postman (v2.0/v2.1), or ReqLite Workspace export to import requests, folders, headers, and variables.")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, ReqTokens.Spacing.md)
@@ -689,13 +727,17 @@ struct ReqImportPostmanSheet: View {
                     // Preview Card or Error
                     if let name = previewName {
                         VStack(alignment: .leading, spacing: ReqTokens.Spacing.xs) {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundColor(.green)
                                     .font(.system(size: 16))
-                                Text("Valid Postman Collection")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.primary)
+                                Text(previewFormat ?? "Valid Collection")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(badgeColor(for: previewFormat).opacity(0.15))
+                                    .foregroundColor(badgeColor(for: previewFormat))
+                                    .clipShape(Capsule())
                             }
                             Text(name)
                                 .font(.system(size: 15, weight: .bold))
@@ -745,7 +787,7 @@ struct ReqImportPostmanSheet: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.orange)
                                     .font(.system(size: 14))
-                                Text("Unrecognized or Invalid Collection")
+                                Text("Unrecognized Collection Format")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(.orange)
                             }
@@ -775,7 +817,7 @@ struct ReqImportPostmanSheet: View {
                     Spacer(minLength: ReqTokens.Spacing.xl)
                 }
             }
-            .navigationTitle("Import Postman")
+            .navigationTitle("Import Collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -798,7 +840,7 @@ struct ReqImportPostmanSheet: View {
                 }
             }
             .onAppear {
-                if let clip = UIPasteboard.general.string, clip.contains("\"_postman_id\"") || clip.contains("\"info\"") {
+                if let clip = UIPasteboard.general.string, clip.contains("\"_type\"") || clip.contains("\"resources\"") || clip.contains("\"_postman_id\"") || clip.contains("\"info\"") || clip.contains("\"collections\"") {
                     jsonText = clip
                 }
             }
@@ -809,6 +851,7 @@ struct ReqImportPostmanSheet: View {
     private func runPreview(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            previewFormat = nil
             previewName = nil
             previewRequestsCount = 0
             previewFoldersCount = 0
@@ -817,14 +860,16 @@ struct ReqImportPostmanSheet: View {
             return
         }
 
-        onPreview(trimmed) { name, reqs, folders, error in
+        onPreview(trimmed) { format, name, reqs, folders, error in
             Task { @MainActor in
                 if let error = error {
+                    self.previewFormat = nil
                     self.previewName = nil
                     self.previewRequestsCount = 0
                     self.previewFoldersCount = 0
                     self.previewError = error
                 } else {
+                    self.previewFormat = format
                     self.previewName = name
                     self.previewRequestsCount = reqs
                     self.previewFoldersCount = folders
@@ -848,6 +893,237 @@ struct ReqImportPostmanSheet: View {
                     isPresented = false
                 } else {
                     errorMessage = message
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Workspace & Collection Export Sheet
+struct ReqExportWorkspaceSheet: View {
+    @Binding var isPresented: Bool
+    let targetCollection: ReqLiteCollection?
+    let collections: [ReqLiteCollection]
+    let onExport: (Bool, String?, @escaping (Result<String, Error>) -> Void) -> Void
+
+    @State private var includeSecrets: Bool = false
+    @State private var selectedScope: ExportScope = .entireWorkspace
+    @State private var selectedCollectionId: String = ""
+    @State private var exportedJson: String? = nil
+    @State private var isExporting: Bool = false
+    @State private var errorMessage: String? = nil
+    @State private var copiedToClipboard: Bool = false
+
+    enum ExportScope: String, CaseIterable, Identifiable {
+        case entireWorkspace = "Entire Workspace"
+        case singleCollection = "Single Collection"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: ReqTokens.Spacing.md) {
+                    // Header card
+                    HStack(spacing: ReqTokens.Spacing.sm) {
+                        Image(systemName: "square.and.arrow.up.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(Color.accentColor)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Export Workspace")
+                                .font(.system(size: 16, weight: .bold))
+                            Text("Export collections, requests, and environments in standard ReqLite JSON format.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(ReqTokens.Spacing.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+                    .padding(.horizontal, ReqTokens.Spacing.md)
+                    .padding(.top, ReqTokens.Spacing.sm)
+
+                    // Export Scope Picker
+                    VStack(alignment: .leading, spacing: ReqTokens.Spacing.xs) {
+                        Text("Export Scope")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+
+                        Picker("Scope", selection: $selectedScope) {
+                            ForEach(ExportScope.allCases) { scope in
+                                Text(scope.rawValue).tag(scope)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .onChange(of: selectedScope) { _ in
+                            exportedJson = nil
+                        }
+
+                        if selectedScope == .singleCollection && !collections.isEmpty {
+                            Picker("Select Collection", selection: $selectedCollectionId) {
+                                ForEach(collections, id: \.id) { col in
+                                    Text(col.name).tag(col.id)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+                            .onChange(of: selectedCollectionId) { _ in
+                                exportedJson = nil
+                            }
+                        }
+                    }
+
+                    // Security Options
+                    VStack(alignment: .leading, spacing: ReqTokens.Spacing.xs) {
+                        Text("Security")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+
+                        Toggle(isOn: $includeSecrets) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Include Secret Variables")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text("When disabled, secret values and API keys are blanked out.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .padding(.vertical, ReqTokens.Spacing.xs)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .onChange(of: includeSecrets) { _ in
+                            exportedJson = nil
+                        }
+                    }
+
+                    // Generate Export Button or Export Result
+                    if let json = exportedJson {
+                        VStack(alignment: .leading, spacing: ReqTokens.Spacing.sm) {
+                            HStack {
+                                Label("Export Ready", systemImage: "checkmark.circle.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.green)
+                                Spacer()
+                                Text("\(json.utf8.count) bytes")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            TextEditor(text: .constant(json))
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(height: 140)
+                                .padding(ReqTokens.Spacing.xxs)
+                                .background(Color(uiColor: .tertiarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+
+                            HStack(spacing: ReqTokens.Spacing.sm) {
+                                Button {
+                                    UIPasteboard.general.string = json
+                                    copiedToClipboard = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        copiedToClipboard = false
+                                    }
+                                } label: {
+                                    HStack {
+                                        Image(systemName: copiedToClipboard ? "checkmark" : "doc.on.clipboard")
+                                        Text(copiedToClipboard ? "Copied!" : "Copy JSON")
+                                    }
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(copiedToClipboard ? .green : Color.accentColor)
+
+                                ShareLink(
+                                    item: json,
+                                    preview: SharePreview("ReqLite Workspace Export.json", image: Image(systemName: "tray.and.arrow.up.fill"))
+                                ) {
+                                    HStack {
+                                        Image(systemName: "square.and.arrow.up")
+                                        Text("Share...")
+                                    }
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        .padding(ReqTokens.Spacing.sm)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.control, style: .continuous))
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                    } else {
+                        Button {
+                            generateExport()
+                        } label: {
+                            HStack {
+                                if isExporting {
+                                    ProgressView()
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "arrow.down.doc.fill")
+                                }
+                                Text("Generate Export JSON")
+                                    .font(.system(size: 14, weight: .bold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.horizontal, ReqTokens.Spacing.md)
+                        .disabled(isExporting)
+                    }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.system(size: 12))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, ReqTokens.Spacing.md)
+                    }
+
+                    Spacer(minLength: ReqTokens.Spacing.xl)
+                }
+            }
+            .navigationTitle("Export")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                }
+            }
+            .onAppear {
+                if let target = targetCollection {
+                    selectedScope = .singleCollection
+                    selectedCollectionId = target.id
+                } else if let firstCol = collections.first {
+                    selectedCollectionId = firstCol.id
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func generateExport() {
+        isExporting = true
+        errorMessage = nil
+
+        let colId = selectedScope == .singleCollection ? selectedCollectionId : nil
+        onExport(includeSecrets, colId) { result in
+            Task { @MainActor in
+                isExporting = false
+                switch result {
+                case .success(let json):
+                    self.exportedJson = json
+                case .failure(let err):
+                    self.errorMessage = err.localizedDescription
                 }
             }
         }

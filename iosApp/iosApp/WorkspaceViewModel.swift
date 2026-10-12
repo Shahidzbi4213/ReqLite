@@ -30,6 +30,8 @@ class WorkspaceViewModel: ObservableObject {
     @Published var showingSaveCollectionSheet: Bool = false
     @Published var showingNewCollectionAlert: Bool = false
     @Published var showingImportPostmanSheet: Bool = false
+    @Published var showingExportSheet: Bool = false
+    @Published var selectedCollectionForExport: ReqLiteCollection? = nil
     @Published var activeRequestId: String? = nil
 
     struct KeyValueItem: Identifiable, Equatable {
@@ -465,6 +467,127 @@ class WorkspaceViewModel: ObservableObject {
                 }
             }
         )
+    }
+
+    func previewUniversal(_ json: String, completion: @escaping (String?, String?, Int, Int, String?) -> Void) {
+        guard let adapter = adapter else {
+            completion(nil, nil, 0, 0, "Adapter unavailable")
+            return
+        }
+        adapter.previewUniversal(
+            jsonContent: json,
+            onSuccess: { format, name, reqs, folders in
+                completion(format, name, Int(truncating: reqs), Int(truncating: folders), nil)
+            },
+            onError: { errorMsg in
+                completion(nil, nil, 0, 0, errorMsg)
+            }
+        )
+    }
+
+    func importUniversal(_ json: String, completion: @escaping (Bool, String) -> Void) {
+        guard let adapter = adapter else {
+            completion(false, "Adapter unavailable")
+            return
+        }
+        adapter.importUniversal(
+            jsonContent: json,
+            onSuccess: { cols, reqs, envs in
+                Task { @MainActor in
+                    var msg = "Imported \(reqs) request\(Int(truncating: reqs) == 1 ? "" : "s")"
+                    if Int(truncating: cols) > 0 {
+                        msg += " across \(cols) collection\(Int(truncating: cols) == 1 ? "" : "s")"
+                    }
+                    if Int(truncating: envs) > 0 {
+                        msg += " and \(envs) environment\(Int(truncating: envs) == 1 ? "" : "s")"
+                    }
+                    completion(true, msg)
+                }
+            },
+            onError: { errorMsg in
+                Task { @MainActor in
+                    completion(false, errorMsg)
+                }
+            }
+        )
+    }
+
+    func previewInsomniaCollection(_ json: String, completion: @escaping (String?, Int, Int, String?) -> Void) {
+        guard let adapter = adapter else {
+            completion(nil, 0, 0, "Adapter unavailable")
+            return
+        }
+        adapter.previewInsomniaCollection(
+            jsonContent: json,
+            onSuccess: { name, reqs, folders in
+                completion(name, Int(truncating: reqs), Int(truncating: folders), nil)
+            },
+            onError: { errorMsg in
+                completion(nil, 0, 0, errorMsg)
+            }
+        )
+    }
+
+    func importInsomniaCollection(_ json: String, completion: @escaping (Bool, String) -> Void) {
+        guard let adapter = adapter else {
+            completion(false, "Adapter unavailable")
+            return
+        }
+        adapter.importInsomniaCollection(
+            jsonContent: json,
+            onSuccess: { name, reqs in
+                Task { @MainActor in
+                    completion(true, "Successfully imported \(reqs) requests into \(name)")
+                }
+            },
+            onError: { errorMsg in
+                Task { @MainActor in
+                    completion(false, errorMsg)
+                }
+            }
+        )
+    }
+
+    func exportWorkspace(
+        includeSecrets: Bool = false,
+        collectionId: String? = nil,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        guard let adapter = adapter else {
+            completion(.failure(NSError(domain: "ReqLite", code: -1, userInfo: [NSLocalizedDescriptionKey: "Adapter unavailable"])))
+            return
+        }
+        if let collectionId = collectionId {
+            adapter.exportCollection(
+                collectionId: collectionId,
+                onSuccess: { json in
+                    Task { @MainActor in
+                        completion(.success(json))
+                    }
+                },
+                onError: { errorMsg in
+                    Task { @MainActor in
+                        completion(.failure(NSError(domain: "ReqLite", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+                    }
+                }
+            )
+        } else {
+            adapter.exportWorkspace(
+                collectionIds: nil,
+                environmentIds: nil,
+                includeSecrets: includeSecrets,
+                onSuccess: { json in
+                    Task { @MainActor in
+                        completion(.success(json))
+                    }
+                },
+                onError: { errorMsg in
+                    Task { @MainActor in
+                        completion(.failure(NSError(domain: "ReqLite", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+                    }
+                }
+            )
+        }
     }
 
     // MARK: - GraphQL Operations

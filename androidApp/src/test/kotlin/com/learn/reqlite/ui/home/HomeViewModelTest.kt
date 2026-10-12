@@ -270,6 +270,62 @@ class HomeViewModelTest {
         assertEquals("https://api.example.com", envVar.value)
     }
 
+    @Test
+    fun importInsomniaCollection_insertsCollectionAndRequests() = runTest {
+        val insomniaJson = """
+        {
+          "_type": "export",
+          "__export_format": 4,
+          "resources": [
+            {
+              "_id": "wrk_123",
+              "_type": "workspace",
+              "name": "Insomnia Android API"
+            },
+            {
+              "_id": "req_123",
+              "_type": "request",
+              "parentId": "wrk_123",
+              "name": "Get Profile",
+              "method": "GET",
+              "url": "https://api.test.com/profile"
+            }
+          ]
+        }
+        """.trimIndent()
+
+        var successCalled = false
+        viewModel.importInsomniaCollection(insomniaJson) { result ->
+            org.junit.Assert.assertTrue(result.isSuccess)
+            assertEquals(1, result.getOrNull()?.requestsImported)
+            successCalled = true
+        }
+
+        org.junit.Assert.assertTrue(successCalled)
+        assertEquals(1, viewModel.collections.value.size)
+        assertEquals("Insomnia Android API", viewModel.collections.value.first().name)
+        assertEquals(1, viewModel.savedRequests.value.size)
+        assertEquals("Get Profile", viewModel.savedRequests.value.first().name)
+    }
+
+    @Test
+    fun exportWorkspace_returnsValidJson() = runTest {
+        val col = com.learn.reqlite.domain.model.Collection(
+            id = "c1",
+            name = "Export API",
+            description = "Desc",
+            createdAt = 1000L,
+            updatedAt = 1000L
+        )
+        fakeCollectionRepo.insertCollection(col)
+
+        val result = viewModel.exportWorkspace()
+        org.junit.Assert.assertTrue(result.isSuccess)
+        val json = result.getOrNull()!!
+        org.junit.Assert.assertTrue(json.contains("Export API"))
+        org.junit.Assert.assertTrue(json.contains("\"schemaVersion\""))
+    }
+
     class FakeHistoryRepository : HistoryRepository {
         private val entries = MutableStateFlow<List<HistoryEntry>>(emptyList())
 

@@ -18,8 +18,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import com.learn.reqlite.domain.export.WorkspaceExporter
+import com.learn.reqlite.domain.export.WorkspaceExportImportManager
 import com.learn.reqlite.domain.export.WorkspaceImporter
 import com.learn.reqlite.domain.export.WorkspaceImportResult
+import com.learn.reqlite.domain.parser.InsomniaCollectionParser
+import com.learn.reqlite.domain.parser.InsomniaCollectionParserImpl
+import com.learn.reqlite.domain.parser.InsomniaParseResult
 import com.learn.reqlite.domain.parser.PostmanCollectionParser
 import com.learn.reqlite.domain.parser.PostmanCollectionParserImpl
 import com.learn.reqlite.domain.parser.PostmanParseResult
@@ -33,11 +38,13 @@ class HomeViewModel(
     private val collectionRepository: CollectionRepository? = null,
     private val workspaceImporter: WorkspaceImporter? = null,
     private val postmanParser: PostmanCollectionParser = PostmanCollectionParserImpl(),
+    private val insomniaParser: InsomniaCollectionParser = InsomniaCollectionParserImpl(),
+    private val workspaceExporter: WorkspaceExporter? = null,
     private val environmentRepository: EnvironmentRepository? = null
 ) : ViewModel() {
 
-    private val effectiveImporter: WorkspaceImporter? by lazy {
-        workspaceImporter ?: collectionRepository?.let { colRepo ->
+    private val effectiveExportImportManager: WorkspaceExportImportManager? by lazy {
+        collectionRepository?.let { colRepo ->
             val envRepo = environmentRepository ?: object : EnvironmentRepository {
                 private val envs = mutableListOf<com.learn.reqlite.domain.model.Environment>()
                 override fun getAllEnvironments() = kotlinx.coroutines.flow.flowOf(envs.toList())
@@ -49,14 +56,21 @@ class HomeViewModel(
                 }
                 override suspend fun deleteEnvironment(id: String) { envs.removeAll { it.id == id } }
             }
-            com.learn.reqlite.domain.export.WorkspaceExportImportManager(
+            WorkspaceExportImportManager(
                 collectionRepository = colRepo,
                 requestRepository = requestRepository,
                 environmentRepository = envRepo,
-                postmanParser = postmanParser
+                postmanParser = postmanParser,
+                insomniaParser = insomniaParser
             )
         }
     }
+
+    private val effectiveImporter: WorkspaceImporter?
+        get() = workspaceImporter ?: effectiveExportImportManager
+
+    private val effectiveExporter: WorkspaceExporter?
+        get() = workspaceExporter ?: effectiveExportImportManager
 
     val recentRequests: StateFlow<List<HistoryEntry>> = historyRepository.getAllHistoryEntries()
         .stateIn(
@@ -176,6 +190,84 @@ class HomeViewModel(
             } catch (e: Exception) {
                 onComplete(Result.failure(e))
             }
+        }
+    }
+
+    suspend fun parseInsomniaCollection(jsonContent: String): InsomniaParseResult = withContext(Dispatchers.Default) {
+        insomniaParser.parse(jsonContent)
+    }
+
+    fun importInsomniaCollection(
+        jsonContent: String,
+        onComplete: (Result<WorkspaceImportResult.Success>) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val importer = effectiveImporter
+                if (importer != null) {
+                    when (val res = importer.importInsomniaCollection(jsonContent)) {
+                        is WorkspaceImportResult.Success -> onComplete(Result.success(res))
+                        is WorkspaceImportResult.Error -> onComplete(Result.failure(Exception(res.message)))
+                    }
+                } else {
+                    onComplete(Result.failure(Exception("Workspace importer not available")))
+                }
+            } catch (e: Exception) {
+                onComplete(Result.failure(e))
+            }
+        }
+    }
+
+    fun importUniversal(
+        jsonContent: String,
+        onComplete: (Result<WorkspaceImportResult.Success>) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val importer = effectiveImporter
+                if (importer != null) {
+                    when (val res = importer.importUniversal(jsonContent)) {
+                        is WorkspaceImportResult.Success -> onComplete(Result.success(res))
+                        is WorkspaceImportResult.Error -> onComplete(Result.failure(Exception(res.message)))
+                    }
+                } else {
+                    onComplete(Result.failure(Exception("Workspace importer not available")))
+                }
+            } catch (e: Exception) {
+                onComplete(Result.failure(e))
+            }
+        }
+    }
+
+    suspend fun exportWorkspace(
+        collectionIds: List<String>? = null,
+        environmentIds: List<String>? = null,
+        includeSecrets: Boolean = false
+    ): Result<String> = withContext(Dispatchers.Default) {
+        try {
+            val exporter = effectiveExporter
+            if (exporter != null) {
+                val json = exporter.exportWorkspace(collectionIds, environmentIds, includeSecrets)
+                Result.success(json)
+            } else {
+                Result.failure(Exception("Workspace exporter not available"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun exportCollection(collectionId: String): Result<String> = withContext(Dispatchers.Default) {
+        try {
+            val exporter = effectiveExporter
+            if (exporter != null) {
+                val json = exporter.exportCollection(collectionId)
+                Result.success(json)
+            } else {
+                Result.failure(Exception("Workspace exporter not available"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }
