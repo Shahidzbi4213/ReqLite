@@ -19,6 +19,7 @@ import io.ktor.http.HttpHeaders
 import com.learn.reqlite.domain.model.ResponseArtifact
 import com.learn.reqlite.domain.usecase.ValidationIssue
 import com.learn.reqlite.utils.common.nowMs
+import kotlinx.serialization.json.*
 
 class RequestExecutionEngineImpl(
     private val httpClient: HttpClient,
@@ -97,6 +98,28 @@ class RequestExecutionEngineImpl(
                     }
                     is com.learn.reqlite.domain.model.RequestBody.FormDataBody -> {}
                     is com.learn.reqlite.domain.model.RequestBody.UrlEncodedBody -> {}
+                    is com.learn.reqlite.domain.model.RequestBody.GraphQLBody -> {
+                        val resolvedQuery = variableResolver.resolve(body.query, resolvedVariables)
+                        val resolvedVariablesJson = variableResolver.resolve(body.variables, resolvedVariables)
+                        val payload = buildJsonObject {
+                            put("query", resolvedQuery)
+                            if (resolvedVariablesJson.isNotBlank()) {
+                                val parsedVars = try {
+                                    Json.parseToJsonElement(resolvedVariablesJson)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                if (parsedVars != null) {
+                                    put("variables", parsedVars)
+                                }
+                            }
+                            if (!body.operationName.isNullOrBlank()) {
+                                put("operationName", body.operationName)
+                            }
+                        }.toString()
+                        header(HttpHeaders.ContentType, "application/json")
+                        setBody(payload)
+                    }
                 }
             }
             

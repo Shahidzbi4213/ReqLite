@@ -59,6 +59,8 @@ fun WorkspaceScreen(
 
     val collections by viewModel.collections.collectAsState()
     val activeRequestId by viewModel.activeRequestId.collectAsState()
+    val graphQLSchema by viewModel.graphQLSchema.collectAsState()
+    val isLoadingSchema by viewModel.isLoadingSchema.collectAsState()
     var showCurlDialog by remember { mutableStateOf(false) }
     var showSaveCollectionDialog by remember { mutableStateOf(false) }
 
@@ -228,6 +230,9 @@ fun WorkspaceScreen(
                             onHeadersChange = { viewModel.setHeaders(it) },
                             onBodyChange = { viewModel.setBody(it) },
                             onAuthChange = { viewModel.setAuthConfiguration(it) },
+                            schema = graphQLSchema,
+                            onFetchSchema = { viewModel.fetchGraphQLSchema() },
+                            isLoadingSchema = isLoadingSchema,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -263,6 +268,9 @@ fun WorkspaceScreen(
                             onHeadersChange = { viewModel.setHeaders(it) },
                             onBodyChange = { viewModel.setBody(it) },
                             onAuthChange = { viewModel.setAuthConfiguration(it) },
+                            schema = graphQLSchema,
+                            onFetchSchema = { viewModel.fetchGraphQLSchema() },
+                            isLoadingSchema = isLoadingSchema,
                             modifier = Modifier.weight(1f)
                         )
                     }

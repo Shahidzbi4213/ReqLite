@@ -49,6 +49,15 @@ class WorkspaceViewModel: ObservableObject {
     @Published var authToken: String = ""
     @Published var requestBody: String = "{\n  \"title\": \"foo\",\n  \"completed\": false\n}"
 
+    // MARK: - GraphQL State
+    @Published var isGraphQL: Bool = false
+    @Published var graphQLVariables: String = "{}"
+    @Published var graphQLSchema: GraphQLSchema? = nil
+    @Published var isLoadingSchema: Bool = false
+    @Published var showingSchemaExplorer: Bool = false
+    @Published var schemaSearchQuery: String = ""
+    @Published var schemaErrorMessage: String? = nil
+
     enum RequestTab: String, CaseIterable, Identifiable, CustomStringConvertible {
         case params = "Params"
         case headers = "Headers"
@@ -157,7 +166,9 @@ class WorkspaceViewModel: ObservableObject {
             url: url,
             headers: headersList,
             queryParams: queryParamsList,
-            bodyContent: body
+            bodyContent: body,
+            isGraphQL: isGraphQL,
+            variablesContent: isGraphQL ? graphQLVariables : nil
         ) { [weak self] req in
             Task { @MainActor in
                 self?.activeRequestId = req.id
@@ -192,7 +203,9 @@ class WorkspaceViewModel: ObservableObject {
             url: url,
             headers: headersList,
             queryParams: queryParamsList,
-            bodyContent: body
+            bodyContent: body,
+            isGraphQL: isGraphQL,
+            variablesContent: isGraphQL ? graphQLVariables : nil
         ) { _ in }
     }
 
@@ -207,8 +220,16 @@ class WorkspaceViewModel: ObservableObject {
             KeyValueItem(key: field.key, value: field.value, isEnabled: field.isEnabled)
         }
         if let adapter = self.adapter {
+            self.isGraphQL = adapter.isGraphQLRequest(request: req)
+            if self.isGraphQL {
+                self.graphQLVariables = adapter.extractGraphQLVariables(request: req)
+            } else {
+                self.graphQLVariables = "{}"
+            }
             self.requestBody = adapter.extractRequestBodyText(request: req)
         } else {
+            self.isGraphQL = false
+            self.graphQLVariables = "{}"
             self.requestBody = ""
         }
     }
@@ -321,14 +342,16 @@ class WorkspaceViewModel: ObservableObject {
             )
         }
 
-        let bodyToSend: String? = (method == "POST" || method == "PUT" || method == "PATCH") ? requestBody : nil
+        let bodyToSend: String? = isGraphQL ? requestBody : ((method == "POST" || method == "PUT" || method == "PATCH") ? requestBody : nil)
 
         adapter.createDraftWithDetails(
-            methodName: method,
+            methodName: isGraphQL ? "POST" : method,
             url: url,
             headers: compiledHeaders,
             queryParams: compiledParams,
-            bodyContent: bodyToSend
+            bodyContent: bodyToSend,
+            isGraphQL: isGraphQL,
+            variablesContent: isGraphQL ? graphQLVariables : nil
         ) { [weak self] draftId in
             Task { @MainActor in
                 guard let self = self else { return }
@@ -442,5 +465,67 @@ class WorkspaceViewModel: ObservableObject {
                 }
             }
         )
+    }
+
+    // MARK: - GraphQL Operations
+
+    func setGraphQLMode(_ enabled: Bool) {
+        self.isGraphQL = enabled
+        if enabled {
+            self.method = "POST"
+            if self.requestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || self.requestBody.contains("\"title\":") {
+                self.requestBody = "query {\n  \n}"
+            }
+            if self.graphQLSchema == nil {
+                fetchGraphQLSchema()
+            }
+        }
+    }
+
+    func fetchGraphQLSchema() {
+        guard let adapter = adapter, !url.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        isLoadingSchema = true
+        schemaErrorMessage = nil
+
+        var compiledHeaders: [RequestField] = []
+        for h in headers where h.isEnabled && !h.key.trimmingCharacters(in: .whitespaces).isEmpty {
+            compiledHeaders.append(adapter.createRequestField(key: h.key, value: h.value, isEnabled: true))
+        }
+
+        adapter.introspectGraphQL(
+            url: url,
+            environmentId: activeEnvironment?.id,
+            headers: compiledHeaders
+        ) { [weak self] schema in
+            Task { @MainActor in
+                self?.graphQLSchema = schema
+                self?.isLoadingSchema = false
+            }
+        } onError: { [weak self] errorMsg in
+            Task { @MainActor in
+                self?.schemaErrorMessage = errorMsg
+                self?.isLoadingSchema = false
+            }
+        }
+    }
+
+    func formatGraphQLQuery() {
+        guard let adapter = adapter else { return }
+        requestBody = adapter.formatGraphQL(query: requestBody)
+    }
+
+    func getGraphQLCompletions(cursorPosition: Int) -> [GraphQLCompletionItem] {
+        guard let adapter = adapter else { return [] }
+        return adapter.getGraphQLCompletions(query: requestBody, cursorPosition: Int32(cursorPosition), schema: graphQLSchema)
+    }
+
+    func explorerCategories(searchQuery: String) -> [SchemaExplorerCategory] {
+        guard let adapter = adapter, let schema = graphQLSchema else { return [] }
+        return adapter.filterGraphQLSchema(schema: schema, searchQuery: searchQuery)
+    }
+
+    func generateGraphQLSnippet(item: SchemaExplorerItem) -> String? {
+        guard let adapter = adapter, let schema = graphQLSchema else { return nil }
+        return adapter.generateGraphQLSnippet(item: item, schema: schema)
     }
 }

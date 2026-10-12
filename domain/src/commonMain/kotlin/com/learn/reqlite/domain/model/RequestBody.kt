@@ -5,4 +5,9 @@ sealed interface RequestBody {
     data class TextBody(val content: String, val contentType: String) : RequestBody
     data class FormDataBody(val parts: List<RequestField>) : RequestBody
     data class UrlEncodedBody(val fields: List<RequestField>) : RequestBody
+    data class GraphQLBody(
+        val query: String,
+        val variables: String = "{}",
+        val operationName: String? = null
+    ) : RequestBody
 }

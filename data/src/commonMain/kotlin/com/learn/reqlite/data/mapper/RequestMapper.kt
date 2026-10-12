@@ -7,6 +7,7 @@ import com.learn.reqlite.domain.model.HttpMethod
 import com.learn.reqlite.domain.model.Request
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.domain.model.RequestField
+import kotlinx.serialization.json.*
 
 fun RequestEntity.toDomain(
     fields: List<RequestFieldEntity>,
@@ -68,6 +69,17 @@ fun RequestBodyEntity.toDomain(fields: List<RequestFieldEntity>): RequestBody {
         "TEXT" -> RequestBody.TextBody(content ?: "", contentType ?: "text/plain")
         "FORM_DATA" -> RequestBody.FormDataBody(fields.filter { it.type == "FORM_DATA" }.map { it.toDomain() })
         "URL_ENCODED" -> RequestBody.UrlEncodedBody(fields.filter { it.type == "URL_ENCODED" }.map { it.toDomain() })
+        "GRAPHQL" -> {
+            val json = try {
+                content?.let { Json.parseToJsonElement(it).jsonObject }
+            } catch (_: Exception) {
+                null
+            }
+            val query = json?.get("query")?.jsonPrimitive?.contentOrNull ?: content ?: ""
+            val variables = json?.get("variables")?.jsonPrimitive?.contentOrNull ?: "{}"
+            val opName = json?.get("operationName")?.jsonPrimitive?.contentOrNull
+            RequestBody.GraphQLBody(query = query, variables = variables, operationName = opName)
+        }
         else -> RequestBody.NoBody
     }
 }
@@ -102,5 +114,21 @@ fun RequestBody.toEntity(requestId: String?, draftId: String?): RequestBodyEntit
             content = null,
             contentType = null
         )
+        is RequestBody.GraphQLBody -> {
+            val payload = buildJsonObject {
+                put("query", query)
+                put("variables", variables)
+                if (operationName != null) {
+                    put("operationName", operationName)
+                }
+            }.toString()
+            RequestBodyEntity(
+                requestId = requestId,
+                draftId = draftId,
+                type = "GRAPHQL",
+                content = payload,
+                contentType = "application/json"
+            )
+        }
     }
 }

@@ -220,7 +220,17 @@ struct WorkspaceView: View {
                                 case .auth:
                                     ReqAuthTabView(authType: $viewModel.authType, authToken: $viewModel.authToken)
                                 case .body:
-                                    ReqBodyTabView(bodyText: $viewModel.requestBody)
+                                    ReqBodyTabView(
+                                        bodyText: $viewModel.requestBody,
+                                        isGraphQL: $viewModel.isGraphQL,
+                                        variablesText: $viewModel.graphQLVariables,
+                                        schema: viewModel.graphQLSchema,
+                                        isLoadingSchema: viewModel.isLoadingSchema,
+                                        onFetchSchema: { viewModel.fetchGraphQLSchema() },
+                                        onFormatGraphQL: { viewModel.formatGraphQLQuery() },
+                                        onOpenExplorer: { viewModel.showingSchemaExplorer = true },
+                                        getCompletions: { cursor in viewModel.getGraphQLCompletions(cursorPosition: cursor) }
+                                    )
                                 }
                             }
                             .padding(.horizontal, ReqTokens.Spacing.md)
@@ -405,6 +415,20 @@ struct WorkspaceView: View {
                             viewModel.importPostmanCollection(json, completion: completion)
                         }
                     )
+                }
+                .sheet(isPresented: $viewModel.showingSchemaExplorer) {
+                    if let schema = viewModel.graphQLSchema {
+                        ReqGraphQLSchemaExplorerSheet(
+                            schema: schema,
+                            onInsertSnippet: { snippet in
+                                viewModel.requestBody = snippet
+                                viewModel.showingSchemaExplorer = false
+                            },
+                            onDismiss: {
+                                viewModel.showingSchemaExplorer = false
+                            }
+                        )
+                    }
                 }
                 .alert("New Collection", isPresented: $viewModel.showingNewCollectionAlert) {
                     TextField("Collection Name", text: $newCollectionName)

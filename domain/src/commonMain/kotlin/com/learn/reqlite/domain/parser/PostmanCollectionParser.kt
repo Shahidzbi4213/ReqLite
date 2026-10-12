@@ -154,6 +154,10 @@ class PostmanCollectionParserImpl(
                     scanText(it.key)
                     scanText(it.value)
                 }
+                is RequestBody.GraphQLBody -> {
+                    scanText(b.query)
+                    scanText(b.variables)
+                }
                 is RequestBody.NoBody -> {}
             }
         }
@@ -512,13 +516,8 @@ class PostmanCollectionParserImpl(
             "graphql" -> {
                 val gqlObj = bodyObj["graphql"] as? JsonObject
                 val query = gqlObj?.get("query").asString() ?: ""
-                val variables = gqlObj?.get("variables").asString()
-                val jsonPayload = if (variables.isNullOrBlank()) {
-                    "{\"query\": \"${query.replace("\"", "\\\"").replace("\n", "\\n")}\"}"
-                } else {
-                    "{\"query\": \"${query.replace("\"", "\\\"").replace("\n", "\\n")}\", \"variables\": $variables}"
-                }
-                RequestBody.TextBody(content = jsonPayload, contentType = "application/json")
+                val variables = gqlObj?.get("variables").asString() ?: "{}"
+                RequestBody.GraphQLBody(query = query, variables = variables)
             }
             else -> RequestBody.NoBody
         }

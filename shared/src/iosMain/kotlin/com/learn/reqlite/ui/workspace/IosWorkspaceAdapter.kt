@@ -14,6 +14,15 @@ import com.learn.reqlite.domain.parser.PostmanCollectionParser
 import com.learn.reqlite.domain.parser.PostmanParseResult
 import com.learn.reqlite.domain.parser.SmartPayload
 import com.learn.reqlite.domain.parser.SmartPayloadParser
+import com.learn.reqlite.domain.graphql.autocomplete.GraphQLAutocompleteEngine
+import com.learn.reqlite.domain.graphql.autocomplete.GraphQLCompletionItem
+import com.learn.reqlite.domain.graphql.explorer.GraphQLSchemaExplorer
+import com.learn.reqlite.domain.graphql.explorer.SchemaExplorerCategory
+import com.learn.reqlite.domain.graphql.explorer.SchemaExplorerItem
+import com.learn.reqlite.domain.graphql.explorer.SchemaItemKind
+import com.learn.reqlite.domain.graphql.format.GraphQLFormatter
+import com.learn.reqlite.domain.graphql.model.GraphQLSchema
+import com.learn.reqlite.domain.graphql.parser.GraphQLIntrospectionParser
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -191,6 +200,8 @@ class IosWorkspaceAdapter(
         headers: List<RequestField> = emptyList(),
         queryParams: List<RequestField> = emptyList(),
         bodyContent: String? = null,
+        isGraphQL: Boolean = false,
+        variablesContent: String? = null,
         onCreated: (String) -> Unit
     ) {
         scope.launch {
@@ -203,10 +214,10 @@ class IosWorkspaceAdapter(
                 "OPTIONS" -> HttpMethod.OPTIONS
                 else -> HttpMethod.GET
             }
-            val requestBody = if (!bodyContent.isNullOrBlank()) {
-                RequestBody.TextBody(bodyContent, "application/json")
-            } else {
-                RequestBody.NoBody
+            val requestBody = when {
+                isGraphQL -> RequestBody.GraphQLBody(bodyContent ?: "", variablesContent ?: "{}")
+                !bodyContent.isNullOrBlank() -> RequestBody.TextBody(bodyContent, "application/json")
+                else -> RequestBody.NoBody
             }
             val draft = Draft(
                 id = "ios_draft_${com.learn.reqlite.utils.common.nowMs()}_${(1000..9999).random()}",
@@ -273,6 +284,8 @@ class IosWorkspaceAdapter(
         headers: List<RequestField> = emptyList(),
         queryParams: List<RequestField> = emptyList(),
         bodyContent: String? = null,
+        isGraphQL: Boolean = false,
+        variablesContent: String? = null,
         onSaved: ((Request) -> Unit)? = null
     ) {
         scope.launch {
@@ -285,10 +298,10 @@ class IosWorkspaceAdapter(
                 "OPTIONS" -> HttpMethod.OPTIONS
                 else -> HttpMethod.GET
             }
-            val requestBody = if (!bodyContent.isNullOrBlank()) {
-                RequestBody.TextBody(bodyContent, "application/json")
-            } else {
-                RequestBody.NoBody
+            val requestBody = when {
+                isGraphQL -> RequestBody.GraphQLBody(bodyContent ?: "", variablesContent ?: "{}")
+                !bodyContent.isNullOrBlank() -> RequestBody.TextBody(bodyContent, "application/json")
+                else -> RequestBody.NoBody
             }
             val now = com.learn.reqlite.utils.common.nowMs()
             val req = Request(
@@ -317,6 +330,8 @@ class IosWorkspaceAdapter(
         headers: List<RequestField> = emptyList(),
         queryParams: List<RequestField> = emptyList(),
         bodyContent: String? = null,
+        isGraphQL: Boolean = false,
+        variablesContent: String? = null,
         onUpdated: ((Request) -> Unit)? = null
     ) {
         scope.launch {
@@ -330,10 +345,10 @@ class IosWorkspaceAdapter(
                 "OPTIONS" -> HttpMethod.OPTIONS
                 else -> HttpMethod.GET
             }
-            val requestBody = if (!bodyContent.isNullOrBlank()) {
-                RequestBody.TextBody(bodyContent, "application/json")
-            } else {
-                RequestBody.NoBody
+            val requestBody = when {
+                isGraphQL -> RequestBody.GraphQLBody(bodyContent ?: "", variablesContent ?: "{}")
+                !bodyContent.isNullOrBlank() -> RequestBody.TextBody(bodyContent, "application/json")
+                else -> RequestBody.NoBody
             }
             val now = com.learn.reqlite.utils.common.nowMs()
             val req = (existing?.copy(
@@ -380,9 +395,78 @@ class IosWorkspaceAdapter(
     fun extractRequestBodyText(request: Request): String {
         return when (val b = request.body) {
             is RequestBody.TextBody -> b.content
+            is RequestBody.GraphQLBody -> b.query
             is RequestBody.UrlEncodedBody -> b.fields.filter { it.isEnabled }.joinToString("&") { "${it.key}=${it.value}" }
             is RequestBody.FormDataBody -> b.parts.filter { it.isEnabled }.joinToString("&") { "${it.key}=${it.value}" }
             else -> ""
+        }
+    }
+
+    fun isGraphQLRequest(request: Request): Boolean = request.body is RequestBody.GraphQLBody
+
+    fun extractGraphQLVariables(request: Request): String {
+        return (request.body as? RequestBody.GraphQLBody)?.variables ?: "{}"
+    }
+
+    fun formatGraphQL(query: String): String = GraphQLFormatter.format(query)
+
+    fun parseGraphQLSchema(json: String): GraphQLSchema? {
+        return try {
+            GraphQLIntrospectionParser.parse(json)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun getGraphQLCompletions(query: String, cursorPosition: Int, schema: GraphQLSchema?): List<GraphQLCompletionItem> {
+        return GraphQLAutocompleteEngine.getCompletions(query, cursorPosition, schema)
+    }
+
+    fun filterGraphQLSchema(schema: GraphQLSchema, searchQuery: String): List<SchemaExplorerCategory> {
+        return GraphQLSchemaExplorer.filter(schema, searchQuery)
+    }
+
+    fun generateGraphQLSnippet(item: SchemaExplorerItem, schema: GraphQLSchema): String? {
+        val field = item.rawField ?: return null
+        val operation = when (item.kind) {
+            SchemaItemKind.MUTATION -> "mutation"
+            SchemaItemKind.SUBSCRIPTION -> "subscription"
+            else -> "query"
+        }
+        return GraphQLSchemaExplorer.generateSnippet(field, schema, operation)
+    }
+
+    fun getIntrospectionQuery(): String = GraphQLIntrospectionParser.INTROSPECTION_QUERY
+
+    fun introspectGraphQL(
+        url: String,
+        environmentId: String?,
+        headers: List<RequestField> = emptyList(),
+        onSuccess: (GraphQLSchema) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        scope.launch {
+            try {
+                val draft = Draft(
+                    id = "ios_introspect_${com.learn.reqlite.utils.common.nowMs()}_${(1000..9999).random()}",
+                    requestId = null,
+                    method = HttpMethod.POST,
+                    url = url,
+                    headers = headers,
+                    queryParams = emptyList(),
+                    body = RequestBody.GraphQLBody(
+                        query = GraphQLIntrospectionParser.INTROSPECTION_QUERY,
+                        variables = "{}"
+                    ),
+                    updatedAt = com.learn.reqlite.utils.common.nowMs()
+                )
+                requestRepository.insertDraft(draft)
+                val result = executionEngine.executeWithHeaders(draft.id, environmentId)
+                val schema = GraphQLIntrospectionParser.parse(result.responseBody)
+                onSuccess(schema)
+            } catch (e: Exception) {
+                onError(e.message ?: "Introspection failed")
+            }
         }
     }
 

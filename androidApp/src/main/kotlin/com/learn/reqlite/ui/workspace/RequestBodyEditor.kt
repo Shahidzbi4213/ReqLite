@@ -5,22 +5,28 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.learn.reqlite.domain.graphql.model.GraphQLSchema
 import com.learn.reqlite.domain.model.RequestBody
 import com.learn.reqlite.ui.designsystem.components.ReqLiteTextField
+import com.learn.reqlite.ui.workspace.graphql.GraphQLQueryEditor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RequestBodyEditor(
     body: RequestBody,
     onBodyChange: (RequestBody) -> Unit,
+    schema: GraphQLSchema? = null,
+    onFetchSchema: (() -> Unit)? = null,
+    isLoadingSchema: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val bodyTypes = listOf("None", "Text", "Form Data", "URL Encoded")
+    val bodyTypes = listOf("None", "Text", "Form Data", "URL Encoded", "GraphQL")
     val selectedText = when (body) {
         is RequestBody.NoBody -> "None"
         is RequestBody.TextBody -> "Text"
         is RequestBody.FormDataBody -> "Form Data"
         is RequestBody.UrlEncodedBody -> "URL Encoded"
+        is RequestBody.GraphQLBody -> "GraphQL"
     }
 
     var expanded by remember { mutableStateOf(false) }
@@ -58,6 +64,7 @@ fun RequestBodyEditor(
                                 "Text" -> RequestBody.TextBody("", "application/json")
                                 "Form Data" -> RequestBody.FormDataBody(emptyList())
                                 "URL Encoded" -> RequestBody.UrlEncodedBody(emptyList())
+                                "GraphQL" -> RequestBody.GraphQLBody(query = "", variables = "{}")
                                 else -> RequestBody.NoBody
                             }
                             onBodyChange(newBody)
@@ -110,6 +117,15 @@ fun RequestBodyEditor(
                     fields = body.fields,
                     onFieldsChange = { onBodyChange(body.copy(fields = it)) },
                     addButtonText = "Add URL Encoded Field"
+                )
+            }
+            is RequestBody.GraphQLBody -> {
+                GraphQLQueryEditor(
+                    body = body,
+                    onBodyChange = onBodyChange,
+                    schema = schema,
+                    onFetchSchema = onFetchSchema,
+                    isLoadingSchema = isLoadingSchema
                 )
             }
         }

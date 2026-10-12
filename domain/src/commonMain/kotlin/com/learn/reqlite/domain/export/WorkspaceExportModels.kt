@@ -64,10 +64,13 @@ data class ExportFieldDto(
 
 @Serializable
 data class ExportRequestBodyDto(
-    val type: String, // "NO_BODY", "TEXT", "FORM_DATA", "URL_ENCODED"
+    val type: String, // "NO_BODY", "TEXT", "FORM_DATA", "URL_ENCODED", "GRAPHQL"
     val content: String? = null,
     val contentType: String? = null,
-    val fields: List<ExportFieldDto> = emptyList()
+    val fields: List<ExportFieldDto> = emptyList(),
+    val query: String? = null,
+    val variables: String? = null,
+    val operationName: String? = null
 )
 
 @Serializable
