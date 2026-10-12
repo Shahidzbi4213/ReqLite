@@ -358,6 +358,121 @@ class WorkspaceExportImportTest {
         assertEquals("https://api.tebyan.com", urlVar.value)
     }
 
+    @Test
+    fun importInsomniaCollection_createsCollectionRequestsAndEnvironments() = runTest {
+        val insomniaJson = """
+        {
+          "_type": "export",
+          "__export_format": 4,
+          "resources": [
+            {
+              "_id": "wrk_1",
+              "_type": "workspace",
+              "name": "My Insomnia API",
+              "description": "API Docs"
+            },
+            {
+              "_id": "fld_1",
+              "_type": "request_group",
+              "parentId": "wrk_1",
+              "name": "Users"
+            },
+            {
+              "_id": "req_1",
+              "_type": "request",
+              "parentId": "fld_1",
+              "name": "Get User",
+              "method": "GET",
+              "url": "{{ _.baseUrl }}/users/1"
+            },
+            {
+              "_id": "env_1",
+              "_type": "environment",
+              "parentId": "wrk_1",
+              "name": "Base Environment",
+              "data": {
+                "baseUrl": "https://api.example.com"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val result = manager.importInsomniaCollection(insomniaJson)
+        assertIs<WorkspaceImportResult.Success>(result)
+        assertEquals(1, result.collectionsImported)
+        assertEquals(1, result.requestsImported)
+        assertEquals(1, result.environmentsImported)
+
+        val col = fakeCollectionRepo.getCollectionById("wrk_1")
+        assertNotNull(col)
+        assertEquals("My Insomnia API", col.name)
+
+        val req = fakeRequestRepo.getRequestById("req_1")
+        assertNotNull(req)
+        assertEquals("Get User", req.name)
+        assertEquals("{{baseUrl}}/users/1", req.url)
+
+        val envs = fakeEnvironmentRepo.getAllEnvironments().first()
+        val env = envs.find { it.id == "env_1" }
+        assertNotNull(env)
+        assertEquals("Base Environment", env.name)
+        assertEquals("https://api.example.com", env.variables.find { it.key == "baseUrl" }?.value)
+    }
+
+    @Test
+    fun importUniversal_autoDetectsInsomniaPostmanAndReqLite() = runTest {
+        val insomniaJson = """
+        {
+          "_type": "export",
+          "__export_format": 4,
+          "resources": [
+            {
+              "_id": "wrk_u",
+              "_type": "workspace",
+              "name": "Universal Insomnia"
+            },
+            {
+              "_id": "req_u",
+              "_type": "request",
+              "parentId": "wrk_u",
+              "name": "Ping",
+              "method": "GET",
+              "url": "https://example.com/ping"
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val insomniaResult = manager.importUniversal(insomniaJson)
+        assertIs<WorkspaceImportResult.Success>(insomniaResult)
+        assertEquals(1, insomniaResult.collectionsImported)
+        assertEquals(1, insomniaResult.requestsImported)
+
+        val postmanJson = """
+        {
+          "info": {
+            "name": "Universal Postman",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          },
+          "item": [
+            {
+              "name": "Ping",
+              "request": {
+                "method": "GET",
+                "url": "https://example.com/postman-ping"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val postmanResult = manager.importUniversal(postmanJson)
+        assertIs<WorkspaceImportResult.Success>(postmanResult)
+        assertEquals(1, postmanResult.collectionsImported)
+        assertEquals(1, postmanResult.requestsImported)
+    }
+
     // Fakes
     class FakeCollectionRepository : CollectionRepository {
         private val collections = MutableStateFlow<List<Collection>>(emptyList())

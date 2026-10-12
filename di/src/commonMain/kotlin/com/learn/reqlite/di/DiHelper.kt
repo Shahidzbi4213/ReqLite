@@ -4,6 +4,7 @@ import com.learn.reqlite.domain.engine.RequestExecutionEngine
 import com.learn.reqlite.domain.export.WorkspaceExporter
 import com.learn.reqlite.domain.export.WorkspaceImporter
 import com.learn.reqlite.domain.parser.CurlParser
+import com.learn.reqlite.domain.parser.InsomniaCollectionParser
 import com.learn.reqlite.domain.parser.PostmanCollectionParser
 import com.learn.reqlite.domain.repository.CollectionRepository
 import com.learn.reqlite.domain.repository.EnvironmentRepository
@@ -28,6 +29,7 @@ object DiHelper : KoinComponent {
     fun getSecureStorage(): SecureStorage = get()
     fun getCurlParser(): CurlParser = get()
     fun getPostmanCollectionParser(): PostmanCollectionParser = get()
+    fun getInsomniaCollectionParser(): InsomniaCollectionParser = get()
     fun getWorkspaceExporter(): WorkspaceExporter = get()
     fun getWorkspaceImporter(): WorkspaceImporter = get()
 }

@@ -9,9 +9,13 @@ import com.learn.reqlite.domain.repository.HistoryRepository
 import com.learn.reqlite.domain.repository.RequestRepository
 import com.learn.reqlite.domain.export.WorkspaceExportImportManager
 import com.learn.reqlite.domain.export.WorkspaceImporter
+import com.learn.reqlite.domain.export.WorkspaceExporter
 import com.learn.reqlite.domain.export.WorkspaceImportResult
 import com.learn.reqlite.domain.parser.PostmanCollectionParser
 import com.learn.reqlite.domain.parser.PostmanParseResult
+import com.learn.reqlite.domain.parser.InsomniaCollectionParser
+import com.learn.reqlite.domain.parser.InsomniaCollectionParserImpl
+import com.learn.reqlite.domain.parser.InsomniaParseResult
 import com.learn.reqlite.domain.parser.SmartPayload
 import com.learn.reqlite.domain.parser.SmartPayloadParser
 import com.learn.reqlite.domain.graphql.autocomplete.GraphQLAutocompleteEngine
@@ -61,16 +65,24 @@ class IosWorkspaceAdapter(
     private val historyRepository: HistoryRepository,
     private val collectionRepository: CollectionRepository,
     workspaceImporter: WorkspaceImporter? = null,
+    workspaceExporter: WorkspaceExporter? = null,
     postmanParser: PostmanCollectionParser? = null,
+    insomniaParser: InsomniaCollectionParser? = null,
     private val scope: CoroutineScope
 ) {
     private val postmanParser: PostmanCollectionParser = postmanParser ?: com.learn.reqlite.domain.parser.PostmanCollectionParserImpl()
-    private val workspaceImporter: WorkspaceImporter = workspaceImporter ?: WorkspaceExportImportManager(
-        collectionRepository = collectionRepository,
-        requestRepository = requestRepository,
-        environmentRepository = environmentRepository,
-        postmanParser = this.postmanParser
-    )
+    private val insomniaParser: InsomniaCollectionParser = insomniaParser ?: InsomniaCollectionParserImpl()
+    private val exportImportManager: WorkspaceExportImportManager by lazy {
+        WorkspaceExportImportManager(
+            collectionRepository = collectionRepository,
+            requestRepository = requestRepository,
+            environmentRepository = environmentRepository,
+            postmanParser = this.postmanParser,
+            insomniaParser = this.insomniaParser
+        )
+    }
+    private val workspaceImporter: WorkspaceImporter = workspaceImporter ?: exportImportManager
+    private val workspaceExporter: WorkspaceExporter = workspaceExporter ?: exportImportManager
 
     constructor() : this(
         executionEngine = DiHelper.getRequestExecutionEngine(),
@@ -79,7 +91,9 @@ class IosWorkspaceAdapter(
         historyRepository = DiHelper.getHistoryRepository(),
         collectionRepository = DiHelper.getCollectionRepository(),
         workspaceImporter = DiHelper.getWorkspaceImporter(),
+        workspaceExporter = DiHelper.getWorkspaceExporter(),
         postmanParser = DiHelper.getPostmanCollectionParser(),
+        insomniaParser = DiHelper.getInsomniaCollectionParser(),
         scope = CoroutineScope(Dispatchers.Main)
     )
 
@@ -498,6 +512,145 @@ class IosWorkspaceAdapter(
                 is WorkspaceImportResult.Success -> {
                     onSuccess(parsedName, result.requestsImported)
                 }
+            }
+        }
+    }
+
+    fun previewInsomniaCollection(
+        jsonContent: String,
+        onSuccess: (collectionName: String, requestsCount: Int, foldersCount: Int) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        when (val result = insomniaParser.parse(jsonContent)) {
+            is InsomniaParseResult.Error -> onError(result.message)
+            is InsomniaParseResult.Success -> {
+                onSuccess(result.collection.name, result.requests.size, result.folders.size)
+            }
+        }
+    }
+
+    fun importInsomniaCollection(
+        jsonContent: String,
+        onSuccess: (collectionName: String, requestsCount: Int) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        scope.launch {
+            val parsedName = when (val parsed = insomniaParser.parse(jsonContent)) {
+                is InsomniaParseResult.Success -> parsed.collection.name
+                else -> "Imported Insomnia Collection"
+            }
+            when (val result = workspaceImporter.importInsomniaCollection(jsonContent)) {
+                is WorkspaceImportResult.Error -> onError(result.message)
+                is WorkspaceImportResult.Success -> {
+                    onSuccess(parsedName, result.requestsImported)
+                }
+            }
+        }
+    }
+
+    fun previewUniversal(
+        jsonContent: String,
+        onSuccess: (format: String, collectionName: String, requestsCount: Int, foldersCount: Int) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (jsonContent.contains("\"_type\"") && (jsonContent.contains("\"export_format\"") || jsonContent.contains("\"resources\""))) {
+            when (val res = insomniaParser.parse(jsonContent)) {
+                is InsomniaParseResult.Success -> {
+                    onSuccess("Insomnia", res.collection.name, res.requests.size, res.folders.size)
+                    return
+                }
+                is InsomniaParseResult.Error -> {
+                    onError(res.message)
+                    return
+                }
+            }
+        }
+
+        if (jsonContent.contains("\"info\"") && (jsonContent.contains("\"item\"") || jsonContent.contains("\"schema\""))) {
+            when (val res = postmanParser.parse(jsonContent)) {
+                is PostmanParseResult.Success -> {
+                    onSuccess("Postman", res.collection.name, res.requests.size, res.folders.size)
+                    return
+                }
+                is PostmanParseResult.Error -> {
+                    onError(res.message)
+                    return
+                }
+            }
+        }
+
+        if (jsonContent.contains("\"collections\"") || jsonContent.contains("\"schemaVersion\"")) {
+            onSuccess("ReqLite Workspace", "ReqLite Workspace", 0, 0)
+            return
+        }
+
+        // Try fallbacks
+        when (val insRes = insomniaParser.parse(jsonContent)) {
+            is InsomniaParseResult.Success -> {
+                onSuccess("Insomnia", insRes.collection.name, insRes.requests.size, insRes.folders.size)
+                return
+            }
+            is InsomniaParseResult.Error -> {
+                when (val pmRes = postmanParser.parse(jsonContent)) {
+                    is PostmanParseResult.Success -> {
+                        onSuccess("Postman", pmRes.collection.name, pmRes.requests.size, pmRes.folders.size)
+                        return
+                    }
+                    is PostmanParseResult.Error -> {
+                        onError("Unrecognized collection format: ${pmRes.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    fun importUniversal(
+        jsonContent: String,
+        onSuccess: (collectionsCount: Int, requestsCount: Int, environmentsCount: Int) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        scope.launch {
+            when (val result = workspaceImporter.importUniversal(jsonContent)) {
+                is WorkspaceImportResult.Error -> onError(result.message)
+                is WorkspaceImportResult.Success -> {
+                    onSuccess(result.collectionsImported, result.requestsImported, result.environmentsImported)
+                }
+            }
+        }
+    }
+
+    fun exportWorkspace(
+        collectionIds: List<String>? = null,
+        environmentIds: List<String>? = null,
+        includeSecrets: Boolean = false,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        scope.launch {
+            try {
+                val json = workspaceExporter.exportWorkspace(
+                    collectionIds = collectionIds,
+                    environmentIds = environmentIds,
+                    includeSecrets = includeSecrets
+                )
+                onSuccess(json)
+            } catch (e: Exception) {
+                onError(e.message ?: "Export failed")
+            }
+        }
+    }
+
+    fun exportCollection(
+        collectionId: String,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        scope.launch {
+            try {
+                val json = workspaceExporter.exportCollection(collectionId)
+                onSuccess(json)
+            } catch (e: Exception) {
+                onError(e.message ?: "Export collection failed")
             }
         }
     }
