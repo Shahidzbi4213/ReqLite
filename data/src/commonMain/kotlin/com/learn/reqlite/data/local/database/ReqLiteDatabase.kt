@@ -2,6 +2,7 @@
 
 package com.learn.reqlite.data.local.database
 
+import androidx.room3.AutoMigration
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import com.learn.reqlite.data.local.dao.CollectionDao
@@ -36,7 +37,10 @@ import androidx.room3.RoomDatabaseConstructor
         HistoryEntryEntity::class,
         ResponseArtifactEntity::class
     ],
-    version = 1
+    version = 2,
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2)
+    ]
 )
 @ConstructedBy(ReqLiteDatabaseConstructor::class)
 abstract class ReqLiteDatabase : RoomDatabase() {

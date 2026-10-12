@@ -12,4 +12,5 @@ fun getDatabaseBuilder(ctx: Context): RoomDatabase.Builder<ReqLiteDatabase> {
         context = appContext,
         name = dbFile.absolutePath
     ).setDriver(BundledSQLiteDriver())
+        .fallbackToDestructiveMigration(true)
 }

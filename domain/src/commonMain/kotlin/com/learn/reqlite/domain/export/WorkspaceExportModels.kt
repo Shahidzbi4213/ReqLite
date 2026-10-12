@@ -49,6 +49,8 @@ data class ExportRequestDto(
     val headers: List<ExportFieldDto> = emptyList(),
     val queryParams: List<ExportFieldDto> = emptyList(),
     val body: ExportRequestBodyDto = ExportRequestBodyDto(type = "NO_BODY"),
+    val preRequestScript: String? = null,
+    val testScript: String? = null,
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L
 )

@@ -12,7 +12,9 @@ data class HttpResponseUiModel(
     val url: String? = null,
     val method: String? = null,
     val artifactId: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val testResults: List<com.learn.reqlite.domain.script.model.TestAssertionResult> = emptyList(),
+    val scriptLogs: List<String> = emptyList()
 ) {
     val statusDescription: String
         get() = HttpStatusHelper.getStatusDescription(statusCode, statusText)

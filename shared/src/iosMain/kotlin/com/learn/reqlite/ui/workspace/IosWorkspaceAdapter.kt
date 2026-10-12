@@ -47,13 +47,30 @@ data class IosSmartPayloadResult(
     val errorMessage: String? = null
 )
 
+data class IosTestResult(
+    val name: String,
+    val passed: Boolean,
+    val errorMessage: String? = null,
+    val durationMs: Long = 0L
+)
+
+data class IosScriptSnippet(
+    val id: String,
+    val title: String,
+    val description: String,
+    val code: String,
+    val isPreRequest: Boolean
+)
+
 sealed class IosExecutionState {
     object Idle : IosExecutionState()
     object Loading : IosExecutionState()
     data class Success(
         val result: HistoryEntry,
         val responseBody: String,
-        val responseHeaders: Map<String, String> = emptyMap()
+        val responseHeaders: Map<String, String> = emptyMap(),
+        val testResults: List<IosTestResult> = emptyList(),
+        val scriptLogs: List<String> = emptyList()
     ) : IosExecutionState()
     data class Error(val message: String) : IosExecutionState()
 }
@@ -139,7 +156,23 @@ class IosWorkspaceAdapter(
             onStateChanged(IosExecutionState.Loading)
             try {
                 val result = executionEngine.executeWithHeaders(draftId, environmentId)
-                onStateChanged(IosExecutionState.Success(result.historyEntry, result.responseBody, result.responseHeaders))
+                val testResults = result.testResults.map {
+                    IosTestResult(
+                        name = it.name,
+                        passed = it.passed,
+                        errorMessage = it.errorMessage,
+                        durationMs = it.durationMs
+                    )
+                }
+                onStateChanged(
+                    IosExecutionState.Success(
+                        result = result.historyEntry,
+                        responseBody = result.responseBody,
+                        responseHeaders = result.responseHeaders,
+                        testResults = testResults,
+                        scriptLogs = result.scriptLogs
+                    )
+                )
             } catch (e: Exception) {
                 onStateChanged(IosExecutionState.Error(e.message ?: "Execution failed"))
             }
@@ -216,6 +249,8 @@ class IosWorkspaceAdapter(
         bodyContent: String? = null,
         isGraphQL: Boolean = false,
         variablesContent: String? = null,
+        preRequestScript: String? = null,
+        testScript: String? = null,
         onCreated: (String) -> Unit
     ) {
         scope.launch {
@@ -241,10 +276,24 @@ class IosWorkspaceAdapter(
                 headers = headers,
                 queryParams = queryParams,
                 body = requestBody,
+                preRequestScript = preRequestScript,
+                testScript = testScript,
                 updatedAt = com.learn.reqlite.utils.common.nowMs()
             )
             requestRepository.insertDraft(draft)
             onCreated(draft.id)
+        }
+    }
+
+    fun getPreRequestSnippets(): List<IosScriptSnippet> {
+        return com.learn.reqlite.domain.script.model.ScriptSnippets.preRequestSnippets.map {
+            IosScriptSnippet(it.id, it.title, it.description, it.code, it.isPreRequest)
+        }
+    }
+
+    fun getTestSnippets(): List<IosScriptSnippet> {
+        return com.learn.reqlite.domain.script.model.ScriptSnippets.testSnippets.map {
+            IosScriptSnippet(it.id, it.title, it.description, it.code, it.isPreRequest)
         }
     }
 
@@ -300,6 +349,8 @@ class IosWorkspaceAdapter(
         bodyContent: String? = null,
         isGraphQL: Boolean = false,
         variablesContent: String? = null,
+        preRequestScript: String? = null,
+        testScript: String? = null,
         onSaved: ((Request) -> Unit)? = null
     ) {
         scope.launch {
@@ -328,6 +379,8 @@ class IosWorkspaceAdapter(
                 headers = headers,
                 queryParams = queryParams,
                 body = requestBody,
+                preRequestScript = preRequestScript,
+                testScript = testScript,
                 createdAt = now,
                 updatedAt = now
             )
@@ -346,6 +399,8 @@ class IosWorkspaceAdapter(
         bodyContent: String? = null,
         isGraphQL: Boolean = false,
         variablesContent: String? = null,
+        preRequestScript: String? = null,
+        testScript: String? = null,
         onUpdated: ((Request) -> Unit)? = null
     ) {
         scope.launch {
@@ -371,6 +426,8 @@ class IosWorkspaceAdapter(
                 headers = headers,
                 queryParams = queryParams,
                 body = requestBody,
+                preRequestScript = preRequestScript ?: existing.preRequestScript,
+                testScript = testScript ?: existing.testScript,
                 updatedAt = now
             )) ?: Request(
                 id = requestId,
@@ -382,6 +439,8 @@ class IosWorkspaceAdapter(
                 headers = headers,
                 queryParams = queryParams,
                 body = requestBody,
+                preRequestScript = preRequestScript,
+                testScript = testScript,
                 createdAt = now,
                 updatedAt = now
             )

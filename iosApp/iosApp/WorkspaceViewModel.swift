@@ -9,7 +9,7 @@ public typealias ReqLiteRequest = Shared.Request
 enum ExecutionState {
     case idle
     case loading
-    case success(HistoryEntry, String, [String: String])
+    case success(HistoryEntry, String, [String: String], [IosTestResult], [String])
     case error(String)
 }
 
@@ -51,6 +51,12 @@ class WorkspaceViewModel: ObservableObject {
     @Published var authToken: String = ""
     @Published var requestBody: String = "{\n  \"title\": \"foo\",\n  \"completed\": false\n}"
 
+    // MARK: - Script State
+    @Published var preRequestScript: String = ""
+    @Published var testScript: String = ""
+    @Published var testResults: [IosTestResult] = []
+    @Published var scriptLogs: [String] = []
+
     // MARK: - GraphQL State
     @Published var isGraphQL: Bool = false
     @Published var graphQLVariables: String = "{}"
@@ -65,6 +71,8 @@ class WorkspaceViewModel: ObservableObject {
         case headers = "Headers"
         case auth = "Auth"
         case body = "Body"
+        case preRequest = "Pre-request"
+        case tests = "Tests"
         var id: String { rawValue }
         var description: String { rawValue }
     }
@@ -73,6 +81,7 @@ class WorkspaceViewModel: ObservableObject {
         case pretty = "Pretty"
         case raw = "Raw"
         case headers = "Headers"
+        case tests = "Tests"
         var id: String { rawValue }
         var description: String { rawValue }
     }
@@ -160,6 +169,8 @@ class WorkspaceViewModel: ObservableObject {
             adapter.createRequestField(key: item.key, value: item.value, isEnabled: item.isEnabled)
         }
         let body = requestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : requestBody
+        let preScript = preRequestScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : preRequestScript
+        let tScript = testScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : testScript
 
         adapter.saveRequestToCollection(
             collectionId: collectionId,
@@ -170,7 +181,9 @@ class WorkspaceViewModel: ObservableObject {
             queryParams: queryParamsList,
             bodyContent: body,
             isGraphQL: isGraphQL,
-            variablesContent: isGraphQL ? graphQLVariables : nil
+            variablesContent: isGraphQL ? graphQLVariables : nil,
+            preRequestScript: preScript,
+            testScript: tScript
         ) { [weak self] req in
             Task { @MainActor in
                 self?.activeRequestId = req.id
@@ -197,6 +210,8 @@ class WorkspaceViewModel: ObservableObject {
         }
 
         let body = requestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : requestBody
+        let preScript = preRequestScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : preRequestScript
+        let tScript = testScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : testScript
 
         adapter.updateRequest(
             requestId: reqId,
@@ -207,7 +222,9 @@ class WorkspaceViewModel: ObservableObject {
             queryParams: queryParamsList,
             bodyContent: body,
             isGraphQL: isGraphQL,
-            variablesContent: isGraphQL ? graphQLVariables : nil
+            variablesContent: isGraphQL ? graphQLVariables : nil,
+            preRequestScript: preScript,
+            testScript: tScript
         ) { _ in }
     }
 
@@ -221,6 +238,8 @@ class WorkspaceViewModel: ObservableObject {
         self.headers = req.headers.map { field in
             KeyValueItem(key: field.key, value: field.value, isEnabled: field.isEnabled)
         }
+        self.preRequestScript = req.preRequestScript ?? ""
+        self.testScript = req.testScript ?? ""
         if let adapter = self.adapter {
             self.isGraphQL = adapter.isGraphQLRequest(request: req)
             if self.isGraphQL {
@@ -345,6 +364,8 @@ class WorkspaceViewModel: ObservableObject {
         }
 
         let bodyToSend: String? = isGraphQL ? requestBody : ((method == "POST" || method == "PUT" || method == "PATCH") ? requestBody : nil)
+        let preScript = preRequestScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : preRequestScript
+        let tScript = testScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : testScript
 
         adapter.createDraftWithDetails(
             methodName: isGraphQL ? "POST" : method,
@@ -353,7 +374,9 @@ class WorkspaceViewModel: ObservableObject {
             queryParams: compiledParams,
             bodyContent: bodyToSend,
             isGraphQL: isGraphQL,
-            variablesContent: isGraphQL ? graphQLVariables : nil
+            variablesContent: isGraphQL ? graphQLVariables : nil,
+            preRequestScript: preScript,
+            testScript: tScript
         ) { [weak self] draftId in
             Task { @MainActor in
                 guard let self = self else { return }
@@ -365,7 +388,15 @@ class WorkspaceViewModel: ObservableObject {
                         if state is IosExecutionState.Loading {
                             self.executionState = .loading
                         } else if let success = state as? IosExecutionState.Success {
-                            self.executionState = .success(success.result, success.responseBody, success.responseHeaders)
+                            self.testResults = success.testResults
+                            self.scriptLogs = success.scriptLogs
+                            self.executionState = .success(
+                                success.result,
+                                success.responseBody,
+                                success.responseHeaders,
+                                success.testResults,
+                                success.scriptLogs
+                            )
                         } else if let err = state as? IosExecutionState.Error {
                             self.executionState = .error(err.message)
                         } else {
@@ -650,5 +681,31 @@ class WorkspaceViewModel: ObservableObject {
     func generateGraphQLSnippet(item: SchemaExplorerItem) -> String? {
         guard let adapter = adapter, let schema = graphQLSchema else { return nil }
         return adapter.generateGraphQLSnippet(item: item, schema: schema)
+    }
+
+    // MARK: - Script Operations
+
+    func getPreRequestSnippets() -> [IosScriptSnippet] {
+        return adapter?.getPreRequestSnippets() ?? []
+    }
+
+    func getTestSnippets() -> [IosScriptSnippet] {
+        return adapter?.getTestSnippets() ?? []
+    }
+
+    func insertPreRequestSnippet(_ code: String) {
+        if preRequestScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            preRequestScript = code
+        } else {
+            preRequestScript += "\n\n" + code
+        }
+    }
+
+    func insertTestSnippet(_ code: String) {
+        if testScript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            testScript = code
+        } else {
+            testScript += "\n\n" + code
+        }
     }
 }

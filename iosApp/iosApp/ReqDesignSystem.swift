@@ -816,17 +816,20 @@ struct ReqResponseSummaryBar: View {
     let statusCode: Int
     let statusText: String
     let durationMs: Int64
+    var testResults: [IosTestResult] = []
     @Binding var responseTab: WorkspaceViewModel.ResponseTab
 
     init(
         statusCode: Int,
         statusText: String,
         durationMs: Int64,
+        testResults: [IosTestResult] = [],
         responseTab: Binding<WorkspaceViewModel.ResponseTab>
     ) {
         self.statusCode = statusCode
         self.statusText = statusText
         self.durationMs = durationMs
+        self.testResults = testResults
         self._responseTab = responseTab
     }
 
@@ -871,6 +874,24 @@ struct ReqResponseSummaryBar: View {
             }
             .foregroundColor(.secondary)
 
+            // Test results badge if any
+            if !testResults.isEmpty {
+                let passedCount = testResults.filter { $0.passed }.count
+                let totalCount = testResults.count
+                let allPassed = passedCount == totalCount
+                HStack(spacing: 3) {
+                    Image(systemName: allPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 10))
+                    Text("\(passedCount)/\(totalCount)")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+                .padding(.horizontal, 6)
+                .frame(height: 22)
+                .background(allPassed ? Color.green.opacity(0.12) : Color.red.opacity(0.12))
+                .foregroundColor(allPassed ? Color.green : Color.red)
+                .clipShape(Capsule())
+            }
+
             Spacer()
 
             // Response tab picker
@@ -878,7 +899,7 @@ struct ReqResponseSummaryBar: View {
                 items: WorkspaceViewModel.ResponseTab.allCases,
                 selection: $responseTab
             )
-            .frame(width: 210)
+            .frame(width: 260)
         }
         .padding(.horizontal, ReqTokens.Spacing.md)
         .padding(.vertical, ReqTokens.Spacing.xs)
@@ -1520,6 +1541,105 @@ struct ReqBodyTabView: View {
         case .type: return Color(red: 1.0, green: 0.58, blue: 0.0) // Orange
         default: return Color.secondary
         }
+    }
+}
+
+// MARK: - Liquid Glass Script Editor Tab View
+
+struct ReqScriptTabView: View {
+    let title: String
+    let description: String
+    @Binding var scriptText: String
+    let snippets: [IosScriptSnippet]
+    let onInsertSnippet: (String) -> Void
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme: ColorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ReqTokens.Spacing.xs) {
+            // Header Info & Quick Actions
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text(description)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                if !scriptText.isEmpty {
+                    Button("Clear") {
+                        scriptText = ""
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(Capsule())
+                }
+            }
+
+            // Snippet Chips Carousel
+            if !snippets.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SNIPPETS")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(snippets, id: \.id) { snippet in
+                                Button {
+                                    onInsertSnippet(snippet.code)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "plus")
+                                            .font(.system(size: 9, weight: .bold))
+                                        Text(snippet.title)
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        Capsule()
+                                            .fill(colorScheme == .dark ? Color.white.opacity(0.12) : Color.white)
+                                            .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
+                                    )
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+                                    )
+                                    .foregroundColor(.primary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                .padding(.top, 2)
+            }
+
+            // Script Text Editor
+            VStack(alignment: .leading, spacing: 2) {
+                TextEditor(text: $scriptText)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(minHeight: 180, maxHeight: 320)
+                    .padding(ReqTokens.Spacing.xxs)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.primary.opacity(0.03))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.75)
+                    )
+            }
+        }
+        .padding(ReqTokens.Spacing.sm)
+        .reqGlass(.content, cornerRadius: ReqTokens.Radius.control)
     }
 }
 

@@ -29,6 +29,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":utils"))
             api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
             implementation(libs.kotlinx.serialization.json)
         }

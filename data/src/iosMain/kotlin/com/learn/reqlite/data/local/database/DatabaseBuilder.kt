@@ -26,6 +26,7 @@ fun getDatabaseBuilder(customPath: String? = null): RoomDatabase.Builder<ReqLite
     return Room.databaseBuilder<ReqLiteDatabase>(
         name = dbFile
     ).setDriver(BundledSQLiteDriver())
+        .fallbackToDestructiveMigration(true)
 }
 
 fun getInMemoryDatabaseBuilder(): RoomDatabase.Builder<ReqLiteDatabase> {

@@ -12,7 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.learn.reqlite.domain.graphql.model.GraphQLSchema
 import com.learn.reqlite.domain.model.RequestBody
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.text.font.FontFamily
 import com.learn.reqlite.domain.model.RequestField
+import com.learn.reqlite.domain.script.model.ScriptSnippet
 import com.learn.reqlite.ui.designsystem.components.ReqLiteTextField
 import com.learn.reqlite.ui.designsystem.components.ReqLiteButton
 import java.util.UUID
@@ -30,13 +34,24 @@ fun RequestEditor(
     schema: GraphQLSchema? = null,
     onFetchSchema: (() -> Unit)? = null,
     isLoadingSchema: Boolean = false,
+    preRequestScript: String = "",
+    testScript: String = "",
+    onPreRequestScriptChange: ((String) -> Unit)? = null,
+    onTestScriptChange: ((String) -> Unit)? = null,
+    preRequestSnippets: List<ScriptSnippet> = emptyList(),
+    testSnippets: List<ScriptSnippet> = emptyList(),
+    onInsertPreRequestSnippet: ((ScriptSnippet) -> Unit)? = null,
+    onInsertTestSnippet: ((ScriptSnippet) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("Params", "Headers", "Auth", "Body")
+    val tabs = listOf("Params", "Headers", "Auth", "Body", "Pre-request", "Tests")
 
     Column(modifier = modifier.fillMaxSize()) {
-        PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
+        PrimaryScrollableTabRow(
+            selectedTabIndex = selectedTabIndex,
+            edgePadding = 16.dp
+        ) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTabIndex == index,
@@ -74,8 +89,70 @@ fun RequestEditor(
                     onFetchSchema = onFetchSchema,
                     isLoadingSchema = isLoadingSchema
                 )
+                4 -> ScriptEditor(
+                    script = preRequestScript,
+                    onScriptChange = { onPreRequestScriptChange?.invoke(it) },
+                    snippets = preRequestSnippets,
+                    onInsertSnippet = { onInsertPreRequestSnippet?.invoke(it) },
+                    placeholder = "// Write pre-request script here...\n// e.g. pm.environment.set(\"timestamp\", Date.now());"
+                )
+                5 -> ScriptEditor(
+                    script = testScript,
+                    onScriptChange = { onTestScriptChange?.invoke(it) },
+                    snippets = testSnippets,
+                    onInsertSnippet = { onInsertTestSnippet?.invoke(it) },
+                    placeholder = "// Write test assertions here...\n// e.g. pm.test(\"Status code is 200\", function() {\n//     pm.response.to.have.status(200);\n// });"
+                )
             }
         }
+    }
+}
+
+@Composable
+fun ScriptEditor(
+    script: String,
+    onScriptChange: (String) -> Unit,
+    snippets: List<ScriptSnippet>,
+    onInsertSnippet: (ScriptSnippet) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        if (snippets.isNotEmpty()) {
+            Text(
+                text = "Snippets",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                items(snippets) { snippet ->
+                    AssistChip(
+                        onClick = { onInsertSnippet(snippet) },
+                        label = { Text(snippet.title, style = MaterialTheme.typography.labelMedium) }
+                    )
+                }
+            }
+        }
+        OutlinedTextField(
+            value = script,
+            onValueChange = onScriptChange,
+            placeholder = {
+                Text(
+                    text = placeholder,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+        )
     }
 }
 

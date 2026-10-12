@@ -77,6 +77,18 @@ class WorkspaceViewModel(
     private val _authConfiguration = MutableStateFlow<AuthConfiguration>(AuthConfiguration.None)
     val authConfiguration: StateFlow<AuthConfiguration> = _authConfiguration.asStateFlow()
 
+    private val _preRequestScript = MutableStateFlow("")
+    val preRequestScript: StateFlow<String> = _preRequestScript.asStateFlow()
+
+    private val _testScript = MutableStateFlow("")
+    val testScript: StateFlow<String> = _testScript.asStateFlow()
+
+    private val _testResults = MutableStateFlow<List<com.learn.reqlite.domain.script.model.TestAssertionResult>>(emptyList())
+    val testResults: StateFlow<List<com.learn.reqlite.domain.script.model.TestAssertionResult>> = _testResults.asStateFlow()
+
+    private val _scriptLogs = MutableStateFlow<List<String>>(emptyList())
+    val scriptLogs: StateFlow<List<String>> = _scriptLogs.asStateFlow()
+
     private val _executionState = MutableStateFlow<ExecutionUiState>(ExecutionUiState.Idle)
     val executionState: StateFlow<ExecutionUiState> = _executionState.asStateFlow()
 
@@ -169,6 +181,31 @@ class WorkspaceViewModel(
         _authConfiguration.value = newAuth
     }
 
+    fun setPreRequestScript(script: String) {
+        _preRequestScript.value = script
+        saveDraft()
+    }
+
+    fun setTestScript(script: String) {
+        _testScript.value = script
+        saveDraft()
+    }
+
+    fun insertPreRequestSnippet(code: String) {
+        val current = _preRequestScript.value
+        _preRequestScript.value = if (current.isBlank()) code else "$current\n\n$code"
+        saveDraft()
+    }
+
+    fun insertTestSnippet(code: String) {
+        val current = _testScript.value
+        _testScript.value = if (current.isBlank()) code else "$current\n\n$code"
+        saveDraft()
+    }
+
+    val preRequestSnippets: List<com.learn.reqlite.domain.script.model.ScriptSnippet> = com.learn.reqlite.domain.script.model.ScriptSnippets.preRequestSnippets
+    val testSnippets: List<com.learn.reqlite.domain.script.model.ScriptSnippet> = com.learn.reqlite.domain.script.model.ScriptSnippets.testSnippets
+
     private fun loadEnvironments() {
         if (environmentRepository != null) {
             viewModelScope.launch {
@@ -254,7 +291,52 @@ class WorkspaceViewModel(
                 }
             }
 
-            val resolvedUrl = variableResolver.resolve(currentUrl, resolvedVariables)
+            val scriptEngine = com.learn.reqlite.domain.script.ScriptInterpreter()
+            val mutableVariablesMap = resolvedVariables.associate { it.key to it.value }.toMutableMap()
+            var effectiveUrl = currentUrl
+            val dynamicHeaders = mutableMapOf<String, String>()
+            val directScriptLogs = mutableListOf<String>()
+
+            // Execute Pre-request Script if present
+            val preScript = _preRequestScript.value
+            val effectiveHeaders = _headers.value.filter { it.isEnabled }.associate { it.key to it.value }.toMutableMap()
+            if (preScript.isNotBlank()) {
+                val preContext = com.learn.reqlite.domain.script.PreRequestContext(
+                    url = currentUrl,
+                    method = _method.value,
+                    headers = effectiveHeaders,
+                    queryParams = _queryParams.value.filter { it.isEnabled }.associate { it.key to it.value },
+                    bodyContent = when (val b = _body.value) {
+                        is RequestBody.TextBody -> b.content
+                        else -> null
+                    },
+                    environmentVariables = mutableVariablesMap
+                )
+                val preResult = scriptEngine.executePreRequest(preScript, preContext)
+                directScriptLogs.addAll(preResult.logs)
+                if (preResult.mutatedVariables.isNotEmpty()) {
+                    mutableVariablesMap.putAll(preResult.mutatedVariables)
+                }
+                if (preResult.mutatedHeaders.isNotEmpty()) {
+                    effectiveHeaders.putAll(preResult.mutatedHeaders)
+                }
+                if (!preResult.mutatedUrl.isNullOrBlank()) {
+                    effectiveUrl = preResult.mutatedUrl!!
+                }
+            }
+
+            val effectiveVariables = resolvedVariables.map { v ->
+                val updated = mutableVariablesMap[v.key] ?: v.value
+                v.copy(value = updated)
+            } + mutableVariablesMap.filterKeys { k -> resolvedVariables.none { it.key == k } }.map { (k, v) ->
+                Variable(
+                    id = "var_${k}",
+                    key = k,
+                    value = v
+                )
+            }
+
+            val resolvedUrl = variableResolver.resolve(effectiveUrl, effectiveVariables)
             val client = httpClient ?: HttpClient()
             val startTime = nowMs()
 
@@ -262,12 +344,12 @@ class WorkspaceViewModel(
                 val statement = client.request(resolvedUrl) {
                     this.method = KtorHttpMethod.parse(_method.value)
 
-                    // Inject Headers
-                    _headers.value.filter { it.isEnabled }.forEach { header ->
-                        val k = variableResolver.resolve(header.key, resolvedVariables)
-                        val v = variableResolver.resolve(header.value, resolvedVariables)
-                        if (k.isNotBlank()) {
-                            header(k, v)
+                    // Inject Headers (including pre-request mutated headers)
+                    effectiveHeaders.forEach { (k, v) ->
+                        val resK = variableResolver.resolve(k, effectiveVariables)
+                        val resV = variableResolver.resolve(v, effectiveVariables)
+                        if (resK.isNotBlank()) {
+                            header(resK, resV)
                         }
                     }
 
@@ -275,12 +357,12 @@ class WorkspaceViewModel(
                     when (val auth = _authConfiguration.value) {
                         is AuthConfiguration.None -> {}
                         is AuthConfiguration.Bearer -> {
-                            val resolvedToken = variableResolver.resolve(auth.token, resolvedVariables)
+                            val resolvedToken = variableResolver.resolve(auth.token, effectiveVariables)
                             header(HttpHeaders.Authorization, "Bearer $resolvedToken")
                         }
                         is AuthConfiguration.Basic -> {
-                            val u = variableResolver.resolve(auth.username, resolvedVariables)
-                            val p = variableResolver.resolve(auth.password, resolvedVariables)
+                            val u = variableResolver.resolve(auth.username, effectiveVariables)
+                            val p = variableResolver.resolve(auth.password, effectiveVariables)
                             val creds = "$u:$p".encodeBase64()
                             header(HttpHeaders.Authorization, "Basic $creds")
                         }
@@ -288,8 +370,8 @@ class WorkspaceViewModel(
 
                     // Inject Query Params
                     _queryParams.value.filter { it.isEnabled }.forEach { qp ->
-                        val k = variableResolver.resolve(qp.key, resolvedVariables)
-                        val v = variableResolver.resolve(qp.value, resolvedVariables)
+                        val k = variableResolver.resolve(qp.key, effectiveVariables)
+                        val v = variableResolver.resolve(qp.value, effectiveVariables)
                         if (k.isNotBlank()) {
                             parameter(k, v)
                         }
@@ -299,24 +381,24 @@ class WorkspaceViewModel(
                     when (val reqBody = _body.value) {
                         is RequestBody.NoBody -> {}
                         is RequestBody.TextBody -> {
-                            val resolvedContent = variableResolver.resolve(reqBody.content, resolvedVariables)
-                            val resolvedContentType = variableResolver.resolve(reqBody.contentType, resolvedVariables)
+                            val resolvedContent = variableResolver.resolve(reqBody.content, effectiveVariables)
+                            val resolvedContentType = variableResolver.resolve(reqBody.contentType, effectiveVariables)
                             header(HttpHeaders.ContentType, resolvedContentType.ifBlank { "application/json" })
                             setBody(resolvedContent)
                         }
                         is RequestBody.FormDataBody -> {}
                         is RequestBody.UrlEncodedBody -> {
                             val pairs = reqBody.fields.filter { it.isEnabled }.map {
-                                val k = variableResolver.resolve(it.key, resolvedVariables)
-                                val v = variableResolver.resolve(it.value, resolvedVariables)
+                                val k = variableResolver.resolve(it.key, effectiveVariables)
+                                val v = variableResolver.resolve(it.value, effectiveVariables)
                                 "$k=$v"
                             }.joinToString("&")
                             header(HttpHeaders.ContentType, "application/x-www-form-urlencoded")
                             setBody(pairs)
                         }
                         is RequestBody.GraphQLBody -> {
-                            val resolvedQuery = variableResolver.resolve(reqBody.query, resolvedVariables)
-                            val resolvedVariablesJson = variableResolver.resolve(reqBody.variables, resolvedVariables)
+                            val resolvedQuery = variableResolver.resolve(reqBody.query, effectiveVariables)
+                            val resolvedVariablesJson = variableResolver.resolve(reqBody.variables, effectiveVariables)
                             val payload = buildJsonObject {
                                 put("query", resolvedQuery)
                                 if (resolvedVariablesJson.isNotBlank()) {
@@ -348,6 +430,49 @@ class WorkspaceViewModel(
                 }
                 val bodyBytes = responseBody.encodeToByteArray().size.toLong()
 
+                // Execute Post-request Test Script if present
+                val tScript = _testScript.value
+                val directTestResults = mutableListOf<com.learn.reqlite.domain.script.model.TestAssertionResult>()
+                if (tScript.isNotBlank()) {
+                    val postContext = com.learn.reqlite.domain.script.PostRequestContext(
+                        statusCode = statusCode,
+                        statusText = statement.status.description,
+                        responseTimeMs = durationMs,
+                        responseHeaders = responseHeadersList.toMap(),
+                        responseBody = responseBody,
+                        requestUrl = resolvedUrl,
+                        requestMethod = _method.value,
+                        environmentVariables = mutableVariablesMap
+                    )
+                    val postResult = scriptEngine.executePostRequestTests(tScript, postContext)
+                    directTestResults.addAll(postResult.testResults)
+                    directScriptLogs.addAll(postResult.logs)
+                    if (postResult.mutatedVariables.isNotEmpty()) {
+                        _activeEnvironment.value?.id?.let { envId ->
+                            environmentRepository?.let { repo ->
+                                viewModelScope.launch {
+                                    val env = repo.getEnvironmentById(envId)
+                                    if (env != null) {
+                                        val existingVars = env.variables.toMutableList()
+                                        postResult.mutatedVariables.forEach { (k, v) ->
+                                            val idx = existingVars.indexOfFirst { it.key == k }
+                                            if (idx >= 0) {
+                                                existingVars[idx] = existingVars[idx].copy(value = v)
+                                            } else {
+                                                existingVars.add(Variable(id = "var_${k}", key = k, value = v))
+                                            }
+                                        }
+                                        repo.insertEnvironment(env.copy(variables = existingVars))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _testResults.value = directTestResults
+                _scriptLogs.value = directScriptLogs
+
                 val historyEntry = HistoryEntry(
                     id = "hist_${nowMs()}",
                     requestId = null,
@@ -373,7 +498,9 @@ class WorkspaceViewModel(
                     timestamp = nowMs(),
                     url = resolvedUrl,
                     method = _method.value,
-                    artifactId = null
+                    artifactId = null,
+                    testResults = directTestResults,
+                    scriptLogs = directScriptLogs
                 )
 
                 _executionState.value = ExecutionUiState.Success(
@@ -408,22 +535,26 @@ class WorkspaceViewModel(
             activeExecutionJob = viewModelScope.launch {
                 _executionState.value = ExecutionUiState.Loading(progress = null)
                 try {
-                    val (entry, _) = executionEngine.execute(draftId, environmentId)
+                    val result = executionEngine.executeWithHeaders(draftId, environmentId)
+                    _testResults.value = result.testResults
+                    _scriptLogs.value = result.scriptLogs
                     val uiModel = HttpResponseUiModel(
-                        statusCode = entry.statusCode ?: 200,
+                        statusCode = result.historyEntry.statusCode ?: 200,
                         statusText = "OK",
-                        durationMs = entry.durationMs ?: 0L,
-                        sizeBytes = 0L,
+                        durationMs = result.historyEntry.durationMs ?: 0L,
+                        sizeBytes = result.responseBody.encodeToByteArray().size.toLong(),
                         contentType = "application/json",
-                        headers = emptyList(),
-                        body = "",
-                        timestamp = entry.timestamp,
-                        url = entry.requestUrl,
-                        method = entry.requestMethod.name,
-                        artifactId = entry.responseArtifactId
+                        headers = result.responseHeaders.map { Pair(it.key, it.value) },
+                        body = result.responseBody,
+                        timestamp = result.historyEntry.timestamp,
+                        url = result.historyEntry.requestUrl,
+                        method = result.historyEntry.requestMethod.name,
+                        artifactId = result.historyEntry.responseArtifactId,
+                        testResults = result.testResults,
+                        scriptLogs = result.scriptLogs
                     )
                     _executionState.value = ExecutionUiState.Success(
-                        historyEntry = entry,
+                        historyEntry = result.historyEntry,
                         response = uiModel
                     )
                 } catch (e: Exception) {
@@ -454,6 +585,8 @@ class WorkspaceViewModel(
                 headers = _headers.value,
                 queryParams = _queryParams.value,
                 body = _body.value,
+                preRequestScript = _preRequestScript.value.takeIf { it.isNotBlank() },
+                testScript = _testScript.value.takeIf { it.isNotBlank() },
                 updatedAt = nowMs()
             )
             requestRepository?.insertDraft(draft)
@@ -469,6 +602,8 @@ class WorkspaceViewModel(
             _headers.value = draft.headers
             _queryParams.value = draft.queryParams
             _body.value = draft.body
+            _preRequestScript.value = draft.preRequestScript ?: ""
+            _testScript.value = draft.testScript ?: ""
             _activeDraftId.value = draftId
             _activeRequestId.value = draft.requestId
         }
@@ -488,6 +623,10 @@ class WorkspaceViewModel(
         _headers.value = emptyList()
         _queryParams.value = emptyList()
         _body.value = RequestBody.NoBody
+        _preRequestScript.value = ""
+        _testScript.value = ""
+        _testResults.value = emptyList()
+        _scriptLogs.value = emptyList()
         _activeDraftId.value = newDraftId
         saveDraft(newDraftId)
     }
@@ -548,6 +687,8 @@ class WorkspaceViewModel(
                     headers = _headers.value,
                     queryParams = _queryParams.value,
                     body = _body.value,
+                    preRequestScript = _preRequestScript.value.takeIf { it.isNotBlank() },
+                    testScript = _testScript.value.takeIf { it.isNotBlank() },
                     updatedAt = now
                 ) ?: Request(
                     id = reqId,
@@ -559,6 +700,8 @@ class WorkspaceViewModel(
                     headers = _headers.value,
                     queryParams = _queryParams.value,
                     body = _body.value,
+                    preRequestScript = _preRequestScript.value.takeIf { it.isNotBlank() },
+                    testScript = _testScript.value.takeIf { it.isNotBlank() },
                     createdAt = now,
                     updatedAt = now
                 )
@@ -604,6 +747,8 @@ class WorkspaceViewModel(
                 headers = _headers.value,
                 queryParams = _queryParams.value,
                 body = _body.value,
+                preRequestScript = _preRequestScript.value.takeIf { it.isNotBlank() },
+                testScript = _testScript.value.takeIf { it.isNotBlank() },
                 createdAt = now,
                 updatedAt = now
             )
