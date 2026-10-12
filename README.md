@@ -167,7 +167,7 @@ ReqLite has dedicated multiplatform and native test suites:
 - [x] Postman collection import (v2.0 & v2.1) & environment variable resolution
 - [ ] Insomnia collection import & workspace export
 - [ ] WebSocket and Server-Sent Events (SSE) streaming
-- [ ] GraphQL query autocompletion & schema explorer
+- [x] GraphQL query autocompletion & schema explorer
 - [ ] Scriptable pre-request & post-request test assertions
 
 ---
