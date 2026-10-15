@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.learn.reqlite.domain.graphql.model.GraphQLSchema
+import com.learn.reqlite.domain.model.AuthConfiguration
 import com.learn.reqlite.domain.model.RequestBody
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items

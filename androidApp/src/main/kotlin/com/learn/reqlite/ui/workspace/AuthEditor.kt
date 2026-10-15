@@ -7,11 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.learn.reqlite.ui.designsystem.components.ReqLiteTextField
 
-sealed interface AuthConfiguration {
-    data object None : AuthConfiguration
-    data class Bearer(val token: String) : AuthConfiguration
-    data class Basic(val username: String, val password: String) : AuthConfiguration
-}
+import com.learn.reqlite.domain.model.AuthConfiguration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

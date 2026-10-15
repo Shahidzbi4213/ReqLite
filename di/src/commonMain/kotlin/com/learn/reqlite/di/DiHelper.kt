@@ -33,4 +33,6 @@ object DiHelper : KoinComponent {
     fun getWorkspaceExporter(): WorkspaceExporter = get()
     fun getWorkspaceImporter(): WorkspaceImporter = get()
     fun getScriptEngine(): com.learn.reqlite.domain.script.ScriptEngine = get()
+    fun getCodeSnippetGenerator(): com.learn.reqlite.domain.snippet.CodeSnippetGenerator = get()
 }
+

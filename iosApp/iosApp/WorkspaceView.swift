@@ -337,8 +337,26 @@ struct WorkspaceView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(viewModel.activeRequestId != nil ? "Save Request" : "Save to Collection")
+
+                        Button {
+                            viewModel.showingCodeSnippetSheet = true
+                        } label: {
+                            Image(systemName: "curlybraces")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(uiColor: .secondarySystemFill))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Generate Code")
                     }
                 }
+
                 .safeAreaInset(edge: .bottom) {
                     // Floating Liquid Glass Action Bar
                     ReqBottomActionBar(
@@ -471,6 +489,9 @@ struct WorkspaceView: View {
                             }
                         )
                     }
+                }
+                .sheet(isPresented: $viewModel.showingCodeSnippetSheet) {
+                    ReqCodeSnippetSheet(viewModel: viewModel)
                 }
                 .alert("New Collection", isPresented: $viewModel.showingNewCollectionAlert) {
                     TextField("Collection Name", text: $newCollectionName)
@@ -1147,4 +1168,107 @@ struct ReqExportWorkspaceSheet: View {
         }
     }
 }
+
+struct ReqCodeSnippetSheet: View {
+    @ObservedObject var viewModel: WorkspaceViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedLanguageId: String = "curl"
+    @State private var copied: Bool = false
+
+    var body: some View {
+        NavigationStack {
+            let languages = viewModel.getSupportedSnippetLanguages()
+            let currentSnippet = viewModel.generateCodeSnippet(languageId: selectedLanguageId)
+
+            VStack(spacing: ReqTokens.Spacing.md) {
+                // Language Chips
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(languages, id: \.id) { lang in
+                            let isSelected = lang.id == selectedLanguageId
+                            Button {
+                                selectedLanguageId = lang.id
+                                copied = false
+                            } label: {
+                                Text(lang.displayName)
+                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                                    .foregroundColor(isSelected ? .white : .primary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(isSelected ? Color.accentColor : Color(uiColor: .secondarySystemFill))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, ReqTokens.Spacing.md)
+                }
+
+                // Code Container
+                ScrollView([.horizontal, .vertical]) {
+                    Text(currentSnippet)
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .foregroundColor(.primary)
+                        .padding(ReqTokens.Spacing.md)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.md, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: ReqTokens.Radius.md, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+                .padding(.horizontal, ReqTokens.Spacing.md)
+
+                // Actions
+                HStack(spacing: 12) {
+                    ShareLink(item: currentSnippet) {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Share")
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(uiColor: .secondarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.md, style: .continuous))
+                    }
+
+                    Button {
+                        UIPasteboard.general.string = currentSnippet
+                        copied = true
+                        let generator = UINotificationFeedbackGenerator()
+                        generator.notificationOccurred(.success)
+                    } label: {
+                        HStack {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            Text(copied ? "Copied!" : "Copy Code")
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(copied ? Color.green : Color.accentColor)
+                        .clipShape(RoundedRectangle(cornerRadius: ReqTokens.Radius.md, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, ReqTokens.Spacing.md)
+                .padding(.bottom, ReqTokens.Spacing.md)
+            }
+            .navigationTitle("Generate Code")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 

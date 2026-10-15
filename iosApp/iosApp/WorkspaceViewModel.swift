@@ -33,6 +33,7 @@ class WorkspaceViewModel: ObservableObject {
     @Published var showingExportSheet: Bool = false
     @Published var selectedCollectionForExport: ReqLiteCollection? = nil
     @Published var activeRequestId: String? = nil
+    @Published var showingCodeSnippetSheet: Bool = false
 
     struct KeyValueItem: Identifiable, Equatable {
         let id = UUID()
@@ -708,4 +709,39 @@ class WorkspaceViewModel: ObservableObject {
             testScript += "\n\n" + code
         }
     }
+
+    func getSupportedSnippetLanguages() -> [IosCodeSnippetLanguage] {
+        return adapter?.getSupportedSnippetLanguages() ?? []
+    }
+
+    func generateCodeSnippet(languageId: String) -> String {
+        guard let adapter = adapter else { return "" }
+
+        var compiledHeaders: [RequestField] = []
+        for h in headers where h.isEnabled && !h.key.isEmpty {
+            compiledHeaders.append(adapter.createRequestField(key: h.key, value: h.value, isEnabled: true))
+        }
+
+        var compiledParams: [RequestField] = []
+        for p in queryParams where p.isEnabled && !p.key.isEmpty {
+            compiledParams.append(adapter.createRequestField(key: p.key, value: p.value, isEnabled: true))
+        }
+
+        let bearer = (authType == "Bearer" && !authToken.isEmpty) ? authToken : nil
+        let contentType = isGraphQL ? "application/json" : "application/json"
+
+        return adapter.generateSnippet(
+            method: method,
+            url: url,
+            headers: compiledHeaders,
+            queryParams: compiledParams,
+            bodyContent: requestBody,
+            contentType: contentType,
+            bearerToken: bearer,
+            basicUsername: nil,
+            basicPassword: nil,
+            languageId: languageId
+        )
+    }
 }
+

@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.MoreVert
+import com.learn.reqlite.domain.model.AuthConfiguration
 
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -65,6 +66,7 @@ fun WorkspaceScreen(
     val testScript by viewModel.testScript.collectAsState()
     var showCurlDialog by remember { mutableStateOf(false) }
     var showSaveCollectionDialog by remember { mutableStateOf(false) }
+    var showCodeSnippetSheet by remember { mutableStateOf(false) }
 
     androidx.activity.compose.BackHandler {
         viewModel.saveDraft()
@@ -140,6 +142,13 @@ fun WorkspaceScreen(
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
+                    IconButton(onClick = { showCodeSnippetSheet = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_code),
+                            contentDescription = "Generate Code",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     Box {
                         IconButton(onClick = { showMoreMenu = true }) {
                             Icon(
@@ -152,6 +161,20 @@ fun WorkspaceScreen(
                             expanded = showMoreMenu,
                             onDismissRequest = { showMoreMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Generate Code") },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_code),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    showCodeSnippetSheet = true
+                                }
+                            )
                             if (activeRequestId != null) {
                                 DropdownMenuItem(
                                     text = { Text("Save As New...") },
@@ -405,7 +428,16 @@ fun WorkspaceScreen(
             }
         )
     }
+
+    if (showCodeSnippetSheet) {
+        CodeSnippetBottomSheet(
+            supportedLanguages = viewModel.supportedSnippetLanguages,
+            onGenerateSnippet = { lang -> viewModel.generateSnippet(lang) },
+            onDismissRequest = { showCodeSnippetSheet = false }
+        )
+    }
 }
+
 
 @Composable
 fun SaveToCollectionDialog(
