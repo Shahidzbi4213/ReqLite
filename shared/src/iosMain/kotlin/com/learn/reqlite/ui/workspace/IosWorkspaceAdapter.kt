@@ -27,6 +27,10 @@ import com.learn.reqlite.domain.graphql.explorer.SchemaItemKind
 import com.learn.reqlite.domain.graphql.format.GraphQLFormatter
 import com.learn.reqlite.domain.graphql.model.GraphQLSchema
 import com.learn.reqlite.domain.graphql.parser.GraphQLIntrospectionParser
+import com.learn.reqlite.domain.snippet.CodeSnippetGenerator
+import com.learn.reqlite.domain.snippet.CodeSnippetGeneratorImpl
+import com.learn.reqlite.domain.snippet.CodeSnippetLanguage
+import com.learn.reqlite.domain.snippet.CodeSnippetRequest
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +56,13 @@ data class IosTestResult(
     val passed: Boolean,
     val errorMessage: String? = null,
     val durationMs: Long = 0L
+)
+
+data class IosCodeSnippetLanguage(
+    val id: String,
+    val displayName: String,
+    val category: String,
+    val syntaxHighlightLang: String
 )
 
 data class IosScriptSnippet(
@@ -85,10 +96,12 @@ class IosWorkspaceAdapter(
     workspaceExporter: WorkspaceExporter? = null,
     postmanParser: PostmanCollectionParser? = null,
     insomniaParser: InsomniaCollectionParser? = null,
+    snippetGenerator: CodeSnippetGenerator? = null,
     private val scope: CoroutineScope
 ) {
     private val postmanParser: PostmanCollectionParser = postmanParser ?: com.learn.reqlite.domain.parser.PostmanCollectionParserImpl()
     private val insomniaParser: InsomniaCollectionParser = insomniaParser ?: InsomniaCollectionParserImpl()
+    private val snippetGenerator: CodeSnippetGenerator = snippetGenerator ?: CodeSnippetGeneratorImpl()
     private val exportImportManager: WorkspaceExportImportManager by lazy {
         WorkspaceExportImportManager(
             collectionRepository = collectionRepository,
@@ -111,8 +124,10 @@ class IosWorkspaceAdapter(
         workspaceExporter = DiHelper.getWorkspaceExporter(),
         postmanParser = DiHelper.getPostmanCollectionParser(),
         insomniaParser = DiHelper.getInsomniaCollectionParser(),
+        snippetGenerator = DiHelper.getCodeSnippetGenerator(),
         scope = CoroutineScope(Dispatchers.Main)
     )
+
 
     private var envJob: Job? = null
     private var historyJob: Job? = null
@@ -714,6 +729,70 @@ class IosWorkspaceAdapter(
         }
     }
 
+    fun getSupportedSnippetLanguages(): List<IosCodeSnippetLanguage> {
+        return snippetGenerator.getSupportedLanguages().map {
+            IosCodeSnippetLanguage(
+                id = it.id,
+                displayName = it.displayName,
+                category = it.category,
+                syntaxHighlightLang = it.syntaxHighlightLang
+            )
+        }
+    }
+
+    fun generateSnippet(
+        method: String,
+        url: String,
+        headers: List<RequestField>,
+        queryParams: List<RequestField>,
+        bodyContent: String?,
+        contentType: String?,
+        bearerToken: String?,
+        basicUsername: String?,
+        basicPassword: String?,
+        languageId: String
+    ): String {
+        val httpMethod = try {
+            HttpMethod.valueOf(method.uppercase())
+        } catch (_: Exception) {
+            HttpMethod.GET
+        }
+
+        val auth = when {
+            !bearerToken.isNullOrBlank() -> AuthConfiguration.Bearer(bearerToken)
+            !basicUsername.isNullOrBlank() || !basicPassword.isNullOrBlank() ->
+                AuthConfiguration.Basic(basicUsername ?: "", basicPassword ?: "")
+            else -> AuthConfiguration.None
+        }
+
+        val body = when {
+            bodyContent.isNullOrBlank() -> RequestBody.NoBody
+            contentType?.contains("x-www-form-urlencoded", ignoreCase = true) == true -> {
+                val parts = bodyContent.split("&").mapNotNull {
+                    val pair = it.split("=", limit = 2)
+                    if (pair.isNotEmpty() && pair[0].isNotBlank()) {
+                        RequestField(id = pair[0], key = pair[0], value = if (pair.size > 1) pair[1] else "")
+                    } else null
+                }
+                RequestBody.UrlEncodedBody(parts)
+            }
+            else -> RequestBody.TextBody(bodyContent, contentType ?: "application/json")
+        }
+
+        val lang = CodeSnippetLanguage.entries.firstOrNull { it.id == languageId } ?: CodeSnippetLanguage.CURL
+
+        val req = CodeSnippetRequest(
+            method = httpMethod,
+            url = url,
+            headers = headers,
+            queryParams = queryParams,
+            body = body,
+            auth = auth
+        )
+
+        return snippetGenerator.generateSnippet(req, lang)
+    }
+
     fun close() {
         envJob?.cancel()
         historyJob?.cancel()
@@ -722,3 +801,4 @@ class IosWorkspaceAdapter(
         executionJob?.cancel()
     }
 }
+

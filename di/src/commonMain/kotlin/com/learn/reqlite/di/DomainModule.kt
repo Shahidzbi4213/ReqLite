@@ -11,10 +11,13 @@ import com.learn.reqlite.domain.parser.PostmanCollectionParser
 import com.learn.reqlite.domain.parser.PostmanCollectionParserImpl
 import com.learn.reqlite.domain.script.ScriptEngine
 import com.learn.reqlite.domain.script.ScriptInterpreter
+import com.learn.reqlite.domain.snippet.CodeSnippetGenerator
+import com.learn.reqlite.domain.snippet.CodeSnippetGeneratorImpl
 import org.koin.dsl.module
 
 val domainModule = module {
     single<CurlParser> { CurlParserImpl() }
+    single<CodeSnippetGenerator> { CodeSnippetGeneratorImpl() }
     single<PostmanCollectionParser> { PostmanCollectionParserImpl() }
     single<InsomniaCollectionParser> { InsomniaCollectionParserImpl() }
     single<ScriptEngine> { ScriptInterpreter() }

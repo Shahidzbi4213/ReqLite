@@ -32,7 +32,9 @@ val appModule = module {
             collectionRepository = getOrNull(),
             httpClient = getOrNull(),
             secureStorage = getOrNull(),
-            variableResolver = get()
+            variableResolver = get(),
+            snippetGenerator = getOrNull()
         ) 
     }
 }
+

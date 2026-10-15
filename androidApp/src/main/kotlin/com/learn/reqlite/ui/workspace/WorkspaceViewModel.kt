@@ -27,6 +27,10 @@ import io.ktor.util.encodeBase64
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import com.learn.reqlite.domain.snippet.CodeSnippetGenerator
+import com.learn.reqlite.domain.snippet.CodeSnippetGeneratorImpl
+import com.learn.reqlite.domain.snippet.CodeSnippetLanguage
+import com.learn.reqlite.domain.snippet.CodeSnippetRequest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -49,8 +53,61 @@ class WorkspaceViewModel(
     private val collectionRepository: CollectionRepository? = null,
     private val httpClient: HttpClient? = null,
     private val secureStorage: SecureStorage? = null,
-    private val variableResolver: VariableResolver = VariableResolver()
+    private val variableResolver: VariableResolver = VariableResolver(),
+    snippetGenerator: CodeSnippetGenerator? = null
 ) : ViewModel() {
+
+    private val snippetGenerator: CodeSnippetGenerator = snippetGenerator ?: CodeSnippetGeneratorImpl()
+    val supportedSnippetLanguages: List<CodeSnippetLanguage> = this.snippetGenerator.getSupportedLanguages()
+
+    private var domainEnvironments: List<com.learn.reqlite.domain.model.Environment> = emptyList()
+
+    fun generateSnippet(language: CodeSnippetLanguage): String {
+        val currentEnvId = _activeEnvironment.value?.id
+        val rawVars = domainEnvironments.find { it.id == currentEnvId }?.variables ?: emptyList()
+
+        val resolvedUrl = variableResolver.resolve(_url.value, rawVars)
+
+        val resolvedHeaders = _headers.value.filter { it.isEnabled }.map {
+            it.copy(
+                key = variableResolver.resolve(it.key, rawVars),
+                value = variableResolver.resolve(it.value, rawVars)
+            )
+        }
+
+        val resolvedQueryParams = _queryParams.value.filter { it.isEnabled }.map {
+            it.copy(
+                key = variableResolver.resolve(it.key, rawVars),
+                value = variableResolver.resolve(it.value, rawVars)
+            )
+        }
+
+        val httpMethod = try {
+            HttpMethod.valueOf(_method.value.uppercase())
+        } catch (_: Exception) {
+            HttpMethod.GET
+        }
+
+        val resolvedAuth = when (val a = _authConfiguration.value) {
+            is AuthConfiguration.None -> AuthConfiguration.None
+            is AuthConfiguration.Bearer -> AuthConfiguration.Bearer(variableResolver.resolve(a.token, rawVars))
+            is AuthConfiguration.Basic -> AuthConfiguration.Basic(
+                variableResolver.resolve(a.username, rawVars),
+                variableResolver.resolve(a.password, rawVars)
+            )
+        }
+
+        val req = CodeSnippetRequest(
+            method = httpMethod,
+            url = resolvedUrl,
+            headers = resolvedHeaders,
+            queryParams = resolvedQueryParams,
+            body = _body.value,
+            auth = resolvedAuth
+        )
+
+        return this.snippetGenerator.generateSnippet(req, language)
+    }
 
     val collections: StateFlow<List<com.learn.reqlite.domain.model.Collection>> = (collectionRepository?.getAllCollections() ?: emptyFlow())
         .stateIn(
@@ -210,6 +267,7 @@ class WorkspaceViewModel(
         if (environmentRepository != null) {
             viewModelScope.launch {
                 environmentRepository.getAllEnvironments().collect { list ->
+                    domainEnvironments = list
                     val uiModels = list.map { EnvironmentUiModel.fromDomain(it) }
                     _environments.value = uiModels
                     _activeEnvironment.value?.let { current ->
